@@ -230,31 +230,41 @@ export default function App(){
   const togSeries=(k)=>setHiddenSeries(function(p){var n=Object.assign({},p);n[k]=!n[k];return n});
   const isVis=(k)=>!hiddenSeries[k];
   const fileRef=useRef();
-  const [saveNames,setSaveNames]=useState({scenario:"",setup:"",assumptions:""});
-  const [savedBundles,setSavedBundles]=useState({scenario:[],setup:[],assumptions:[]});
+  const [saveNames,setSaveNames]=useState({scenario:"",setup:"",assumptions:"",fieldMapping:"",formulas:""});
+  const [savedBundles,setSavedBundles]=useState({scenario:[],setup:[],assumptions:[],fieldMapping:[],formulas:[]});
 
   useEffect(function(){
     try{
       setSavedBundles({
         scenario: JSON.parse(localStorage.getItem("mfc_saved_scenarios")||"[]"),
         setup: JSON.parse(localStorage.getItem("mfc_saved_setup")||"[]"),
-        assumptions: JSON.parse(localStorage.getItem("mfc_saved_assumptions")||"[]")
+        assumptions: JSON.parse(localStorage.getItem("mfc_saved_assumptions")||"[]"),
+        fieldMapping: JSON.parse(localStorage.getItem("mfc_saved_field_mappings")||"[]"),
+        formulas: JSON.parse(localStorage.getItem("mfc_saved_formulas")||"[]")
       });
     }catch(err){ console.error(err); }
   },[]);
 
   const persistBundle=function(kind,list){
     setSavedBundles(function(prev){ return Object.assign({},prev,{[kind]:list}); });
-    try{ localStorage.setItem(kind==="scenario"?"mfc_saved_scenarios":kind==="setup"?"mfc_saved_setup":"mfc_saved_assumptions", JSON.stringify(list)); }catch(err){ console.error(err); }
+    try{
+      var storageKey=kind==="scenario"?"mfc_saved_scenarios":kind==="setup"?"mfc_saved_setup":kind==="assumptions"?"mfc_saved_assumptions":kind==="fieldMapping"?"mfc_saved_field_mappings":"mfc_saved_formulas";
+      localStorage.setItem(storageKey, JSON.stringify(list));
+    }catch(err){ console.error(err); }
   };
   const saveBundle=function(kind){
     var raw=(saveNames[kind]||"").trim();
-    var name=raw||((kind==="scenario"?scn.name:kind==="setup"?"Setup":"Assumptions")+" "+new Date().toLocaleDateString("en-AU"));
+    var baseName=kind==="scenario"?scn.name:kind==="setup"?"Setup":kind==="assumptions"?"Assumptions":kind==="fieldMapping"?((scn&&scn.name?scn.name:"Scenario")+" Field Mapping"):"Formulas";
+    var name=raw||(baseName+" "+new Date().toLocaleDateString("en-AU"));
     var payload=kind==="scenario"
       ? {scenarios:JSON.parse(JSON.stringify(scenarios)),activeScnIdx,fieldMappings:JSON.parse(JSON.stringify((scenarios[activeScnIdx]||{}).fieldMappings||[]))}
       : kind==="setup"
       ? {formulas:JSON.parse(JSON.stringify(formulas)),fleets:JSON.parse(JSON.stringify(fleets))}
-      : {otherA:JSON.parse(JSON.stringify(otherA)),trucks:JSON.parse(JSON.stringify(trucks)),diggers:JSON.parse(JSON.stringify(diggers))};
+      : kind==="assumptions"
+      ? {otherA:JSON.parse(JSON.stringify(otherA)),trucks:JSON.parse(JSON.stringify(trucks)),diggers:JSON.parse(JSON.stringify(diggers))}
+      : kind==="fieldMapping"
+      ? {fieldMappings:JSON.parse(JSON.stringify((scenarios[activeScnIdx]||{}).fieldMappings||[]))}
+      : {formulas:JSON.parse(JSON.stringify(formulas))};
     var list=(savedBundles[kind]||[]).filter(function(x){ return x.name!==name; });
     list.unshift({id:uid(),name,timestamp:Date.now(),data:payload});
     persistBundle(kind,list);
@@ -269,10 +279,20 @@ export default function App(){
     } else if(kind==="setup"){
       setFormulas(item.data.formulas||[]);
       setFleets(item.data.fleets||[]);
-    } else {
+    } else if(kind==="assumptions"){
       setOtherA(item.data.otherA||defaultOther());
       setTrucks(item.data.trucks||[]);
       setDiggers(item.data.diggers||[]);
+    } else if(kind==="fieldMapping"){
+      setScenarios(function(prev){
+        var next=[...prev];
+        var cur=Object.assign({}, next[activeScnIdx]||mkScenario());
+        cur.fieldMappings=item.data.fieldMappings||[];
+        next[activeScnIdx]=cur;
+        return next;
+      });
+    } else if(kind==="formulas"){
+      setFormulas(item.data.formulas||[]);
     }
   };
   const deleteBundle=function(kind,id){ persistBundle(kind,(savedBundles[kind]||[]).filter(function(x){ return x.id!==id; })); };
@@ -598,7 +618,7 @@ export default function App(){
         </div>)}
 
         {/* ══ FIELD MAPPING ══ */}
-        {page==="mapping"&&(<div>
+        {page==="mapping"&&(<div><SavePanel title="Field Mapping Configurations" kind="fieldMapping" nameValue={saveNames.fieldMapping} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{fieldMapping:v})})}} items={savedBundles.fieldMapping} onSave={function(){saveBundle("fieldMapping")}} onLoad={function(id){loadBundle("fieldMapping",id)}} onDelete={function(id){deleteBundle("fieldMapping",id)}}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <ST icon="🔗">Field Mapping — {scn.name}</ST>
             <Btn onClick={()=>updScn(s=>({...s,fieldMappings:[...s.fieldMappings,{id:uid(),name:`Set ${s.fieldMappings.length+1}`,fields:PHYS_FIELDS.reduce((a,f)=>({...a,[f.key]:""}),{})}]}))} solid>+ Add Physical Set</Btn>
@@ -683,7 +703,7 @@ export default function App(){
         </div>)}
 
         {/* ══ FORMULA EDITOR ══ */}
-        {page==="formulas"&&(<div>
+        {page==="formulas"&&(<div><SavePanel title="Formula Configurations" kind="formulas" nameValue={saveNames.formulas} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{formulas:v})})}} items={savedBundles.formulas} onSave={function(){saveBundle("formulas")}} onLoad={function(id){loadBundle("formulas",id)}} onDelete={function(id){deleteBundle("formulas",id)}}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
             <ST icon="🧮">Formula Editor</ST>
             <div style={{display:"flex",gap:8}}><input type="text" placeholder="Search..." value={formulaSearch} onChange={e=>setFormulaSearch(e.target.value)} style={{...selS,width:160}}/><Btn onClick={()=>{const k="custom_"+Date.now();setFormulas(p=>[...p,{key:k,label:"New Variable",unit:"",formula:"0",section:"🔧 CUSTOM"}]);setEditingFormula(k);setEditText("0")}} color={P.gn} solid>+ Add</Btn><Btn onClick={()=>{setFormulas(defaultFormulas());setEditingFormula(null)}} color={P.rd} small>Reset</Btn></div>

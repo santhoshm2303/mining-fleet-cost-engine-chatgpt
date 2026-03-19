@@ -365,7 +365,7 @@ export default function App(){
     const map={};
     for(const r of results){
       if(!r.res)continue;
-      if(!map[r.pi])map[r.pi]={pi:r.pi,period:r.periodLabel,totalCost:0,totalRamp:0,totalMined:0,truckCost:0,truckOpex:0,diggerCost:0,rehandle:0,Diesel:0,Maint:0,Parts:0,GET:0,Operator:0,Other:0};
+      if(!map[r.pi])map[r.pi]={pi:r.pi,period:r.periodLabel,totalCost:0,totalRamp:0,totalMined:0,truckCost:0,truckOpex:0,diggerCost:0,rehandle:0,truckCapex:0,diggerCapex:0,chargerCapex:0,batteryCapex:0,Diesel:0,Maint:0,Parts:0,GET:0,Operator:0,Other:0};
       const e=map[r.pi];
       e.totalCost+=r.res.totCost||0;
       e.totalRamp+=((r.pd?.totalRampMined||r.pd?.totalMined||0)*scn.unitMul);
@@ -374,6 +374,10 @@ export default function App(){
       e.truckOpex+=r.res.totTrkExc||0;
       e.diggerCost+=r.res.digOpxTotal||0;
       e.rehandle+=r.res.digRehandle||0;
+      e.truckCapex+=r.res.trkCapex||0;
+      e.diggerCapex+=r.res.digCapex||0;
+      e.chargerCapex+=r.res.chgCapex||0;
+      e.batteryCapex+=r.res.totReplBatCost||0;
       e.Diesel+=r.res.digOpxDiesel||0;
       e.Maint+=r.res.digOpxMaint||0;
       e.Parts+=r.res.digOpxParts||0;
@@ -386,6 +390,10 @@ export default function App(){
       TotalCPT:e.totalRamp?e.totalCost/e.totalRamp:0,
       TruckCPT:e.totalRamp?e.truckCost/e.totalRamp:0,
       DiggerCPT:e.totalMined?e.diggerCost/e.totalMined:0,
+      TruckCapex:e.truckCapex,
+      DiggerCapex:e.diggerCapex,
+      ChargerCapex:e.chargerCapex,
+      BatteryCapex:e.batteryCapex,
       TruckOpex:e.truckOpex,
       DiggerOpex:e.diggerCost,
       Rehandle:e.rehandle,
@@ -888,10 +896,25 @@ export default function App(){
             </div>
             {/* Total cost stacked */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Total Cost Breakdown (Stacked)</div>
-              <ChartToggles series={[{key:"TruckOpex",label:"Truck exc Cpx",color:mClr[0]},{key:"DiggerOpex",label:"Digger Opex",color:mClr[1]},{key:"Rehandle",label:"Rehandle",color:mClr[2]}]} hidden={hiddenSeries} onToggle={togSeries}/>
+              <ChartToggles series={[
+                {key:"TruckCapex",label:"Truck Capex",color:"#1d4ed8"},
+                {key:"DiggerCapex",label:"Digger Capex",color:"#15803d"},
+                {key:"TruckOpex",label:"Truck Opex",color:"#60a5fa"},
+                {key:"DiggerOpex",label:"Digger Opex",color:"#4ade80"},
+                {key:"Rehandle",label:"Rehandle Opex",color:"#f59e0b"},
+                {key:"ChargerCapex",label:"Charger Capex",color:"#7c3aed"},
+                {key:"BatteryCapex",label:"Battery Capex",color:"#92400e"}
+              ]} hidden={hiddenSeries} onToggle={togSeries}/>
               <ResponsiveContainer width="100%" height={300}><BarChart data={pData} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+(v/1e6).toFixed(1)+"M"}}/><Tooltip formatter={function(v){return fmtCur(v)}}/>
-                <Legend wrapperStyle={{fontSize:11}}/>{isVis("TruckOpex")&&<Bar dataKey="TruckOpex" stackId="a" fill={mClr[0]} name="Truck exc Cpx"/>}{isVis("DiggerOpex")&&<Bar dataKey="DiggerOpex" stackId="a" fill={mClr[1]} name="Digger Opex"/>}{isVis("Rehandle")&&<Bar dataKey="Rehandle" stackId="a" fill={mClr[2]} name="Rehandle"/>}
+                <Legend wrapperStyle={{fontSize:11}}/>
+                {isVis("TruckCapex")&&<Bar dataKey="TruckCapex" stackId="a" fill="#1d4ed8" name="Truck Capex"/>}
+                {isVis("DiggerCapex")&&<Bar dataKey="DiggerCapex" stackId="a" fill="#15803d" name="Digger Capex"/>}
+                {isVis("TruckOpex")&&<Bar dataKey="TruckOpex" stackId="a" fill="#60a5fa" name="Truck Opex"/>}
+                {isVis("DiggerOpex")&&<Bar dataKey="DiggerOpex" stackId="a" fill="#4ade80" name="Digger Opex"/>}
+                {isVis("Rehandle")&&<Bar dataKey="Rehandle" stackId="a" fill="#f59e0b" name="Rehandle Opex"/>}
+                {isVis("ChargerCapex")&&<Bar dataKey="ChargerCapex" stackId="a" fill="#7c3aed" name="Charger Capex"/>}
+                {isVis("BatteryCapex")&&<Bar dataKey="BatteryCapex" stackId="a" fill="#92400e" name="Battery Capex"/>}
               </BarChart></ResponsiveContainer>
             </div>
             {/* Fleet sizing */}

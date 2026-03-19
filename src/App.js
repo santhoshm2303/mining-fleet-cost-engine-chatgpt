@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, LabelList } from "recharts";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -194,6 +194,7 @@ const ST=({children,icon})=>(<div style={{display:"flex",alignItems:"center",gap
 const ChartToggles=({series,hidden,onToggle})=>(<div style={{display:"flex",gap:6,flexWrap:"wrap",padding:"8px 16px 4px"}}>{series.map(function(s){var vis=!hidden[s.key];return(<button key={s.key} onClick={function(){onToggle(s.key)}} style={{padding:"3px 10px",borderRadius:12,border:"1.5px solid "+(vis?s.color:P.bd),background:vis?s.color+"18":"transparent",color:vis?s.color:P.txD,fontFamily:ff,fontSize:10,fontWeight:600,cursor:"pointer",opacity:vis?1:0.4}}>{vis?"●":"○"} {s.label}</button>)})}</div>);
 const Btn=({children,onClick,color=P.pri,small,solid})=>(<button onClick={onClick} style={{padding:small?"5px 12px":"8px 20px",background:solid?color:"transparent",border:`1.5px solid ${color}`,borderRadius:7,color:solid?"#fff":color,fontFamily:ff,fontSize:12,cursor:"pointer",fontWeight:600}}>{children}</button>);
 const cardS={background:P.card,borderRadius:10,border:`1px solid ${P.bd}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"};
+const SavePanel=({title,kind,nameValue,onNameChange,items,onSave,onLoad,onDelete})=>(<div style={{...cardS,padding:16,marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div><div style={{fontWeight:700,color:P.pri,fontSize:13}}>{title}</div><div style={{fontSize:11,color:P.txD,marginTop:2}}>Save and reload named configurations in this browser.</div></div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><input value={nameValue} onChange={function(e){onNameChange(e.target.value)}} placeholder="Configuration name" style={{padding:"7px 10px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:ff,fontSize:12,minWidth:220}}/><Btn onClick={onSave} solid small>Save</Btn></div></div>{items&&items.length>0&&<div style={{display:"grid",gap:8,marginTop:14}}>{items.map(function(item){return(<div key={item.id} style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",padding:"8px 10px",border:`1px solid ${P.bd}`,borderRadius:8,background:P.secBg,flexWrap:"wrap"}}><div><div style={{fontWeight:600,fontSize:12,color:P.tx}}>{item.name}</div><div style={{fontSize:10,color:P.txD}}>{new Date(item.timestamp||Date.now()).toLocaleString("en-AU")}</div></div><div style={{display:"flex",gap:8}}><Btn onClick={function(){onLoad(item.id)}} small>Load</Btn><Btn onClick={function(){onDelete(item.id)}} small color={P.rd}>Delete</Btn></div></div>)})}</div>}</div>);
 const selS={padding:"6px 12px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:ff,fontSize:12};
 const thS={padding:"9px 10px",color:P.txM,textAlign:"left",fontSize:11,fontWeight:600};
 
@@ -229,6 +230,52 @@ export default function App(){
   const togSeries=(k)=>setHiddenSeries(function(p){var n=Object.assign({},p);n[k]=!n[k];return n});
   const isVis=(k)=>!hiddenSeries[k];
   const fileRef=useRef();
+  const [saveNames,setSaveNames]=useState({scenario:"",setup:"",assumptions:""});
+  const [savedBundles,setSavedBundles]=useState({scenario:[],setup:[],assumptions:[]});
+
+  useEffect(function(){
+    try{
+      setSavedBundles({
+        scenario: JSON.parse(localStorage.getItem("mfc_saved_scenarios")||"[]"),
+        setup: JSON.parse(localStorage.getItem("mfc_saved_setup")||"[]"),
+        assumptions: JSON.parse(localStorage.getItem("mfc_saved_assumptions")||"[]")
+      });
+    }catch(err){ console.error(err); }
+  },[]);
+
+  const persistBundle=function(kind,list){
+    setSavedBundles(function(prev){ return Object.assign({},prev,{[kind]:list}); });
+    try{ localStorage.setItem(kind==="scenario"?"mfc_saved_scenarios":kind==="setup"?"mfc_saved_setup":"mfc_saved_assumptions", JSON.stringify(list)); }catch(err){ console.error(err); }
+  };
+  const saveBundle=function(kind){
+    var raw=(saveNames[kind]||"").trim();
+    var name=raw||((kind==="scenario"?scn.name:kind==="setup"?"Setup":"Assumptions")+" "+new Date().toLocaleDateString("en-AU"));
+    var payload=kind==="scenario"
+      ? {scenarios:JSON.parse(JSON.stringify(scenarios)),activeScnIdx,fieldMappings:JSON.parse(JSON.stringify((scenarios[activeScnIdx]||{}).fieldMappings||[]))}
+      : kind==="setup"
+      ? {formulas:JSON.parse(JSON.stringify(formulas)),fleets:JSON.parse(JSON.stringify(fleets))}
+      : {otherA:JSON.parse(JSON.stringify(otherA)),trucks:JSON.parse(JSON.stringify(trucks)),diggers:JSON.parse(JSON.stringify(diggers))};
+    var list=(savedBundles[kind]||[]).filter(function(x){ return x.name!==name; });
+    list.unshift({id:uid(),name,timestamp:Date.now(),data:payload});
+    persistBundle(kind,list);
+    setSaveNames(function(prev){ return Object.assign({},prev,{[kind]:name}); });
+  };
+  const loadBundle=function(kind,id){
+    var item=(savedBundles[kind]||[]).find(function(x){ return x.id===id; });
+    if(!item)return;
+    if(kind==="scenario"){
+      setScenarios(item.data.scenarios||[]);
+      setActiveScnIdx(Math.min(item.data.activeScnIdx||0, Math.max(0,(item.data.scenarios||[]).length-1)));
+    } else if(kind==="setup"){
+      setFormulas(item.data.formulas||[]);
+      setFleets(item.data.fleets||[]);
+    } else {
+      setOtherA(item.data.otherA||defaultOther());
+      setTrucks(item.data.trucks||[]);
+      setDiggers(item.data.diggers||[]);
+    }
+  };
+  const deleteBundle=function(kind,id){ persistBundle(kind,(savedBundles[kind]||[]).filter(function(x){ return x.id!==id; })); };
 
   const scn=scenarios[activeScnIdx]||scenarios[0];
   const updScn=(fn)=>setScenarios(prev=>{const n=[...prev];n[activeScnIdx]=fn({...n[activeScnIdx]});return n});
@@ -427,7 +474,7 @@ export default function App(){
       <div style={{padding:"20px 32px 60px",maxWidth:1600,margin:"0 auto"}}>
 
         {/* ══ SCENARIO MANAGER ══ */}
-        {page==="scenarios"&&(<div>
+        {page==="scenarios"&&(<div><SavePanel title="Scenario Manager Configurations" kind="scenario" nameValue={saveNames.scenario} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{scenario:v})})}} items={savedBundles.scenario} onSave={function(){saveBundle("scenario")}} onLoad={function(id){loadBundle("scenario",id)}} onDelete={function(id){deleteBundle("scenario",id)}}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <ST icon="📋">Scenario Manager</ST>
             <Btn onClick={()=>setScenarios(p=>[...p,mkScenario(`Scenario ${p.length+1}`)])} solid>+ New Scenario</Btn>
@@ -570,7 +617,7 @@ export default function App(){
         </div>)}
 
         {/* ══ FLEETS ══ */}
-        {page==="fleets"&&(<div>
+        {page==="fleets"&&(<div><SavePanel title="Setup Configurations" kind="setup" nameValue={saveNames.setup} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{setup:v})})}} items={savedBundles.setup} onSave={function(){saveBundle("setup")}} onLoad={function(id){loadBundle("setup",id)}} onDelete={function(id){deleteBundle("setup",id)}}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <ST icon="🏗️">Fleet Combinations (Global)</ST>
             <Btn onClick={()=>setFleets(p=>[...p,mkFleet(`Fleet ${p.length+1}`)])} solid>+ Add Fleet</Btn>
@@ -680,7 +727,7 @@ export default function App(){
         </div>)}
 
         {/* ══ SETTINGS ══ */}
-        {page==="other"&&(<div style={{maxWidth:620}}><ST icon="⚙️">General Assumptions</ST><div style={{...cardS,padding:24}}>
+        {page==="other"&&(<div style={{maxWidth:760}}><SavePanel title="Assumptions Configurations" kind="assumptions" nameValue={saveNames.assumptions} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{assumptions:v})})}} items={savedBundles.assumptions} onSave={function(){saveBundle("assumptions")}} onLoad={function(id){loadBundle("assumptions",id)}} onDelete={function(id){deleteBundle("assumptions",id)}}/><ST icon="⚙️">General Assumptions</ST><div style={{...cardS,padding:24}}>
           {[["moistureContent","Moisture Content","%",0.001],["exchangeRate","Exchange Rate (AUD:USD)","ratio",0.01],["discountRate","Discount Rate","%",0.005],["electricityCost","Electricity Cost","$/kWh",0.001],["dieselCost","Diesel Cost","$/L",0.01],["allInFitterPerYear","All-in Fitter Rate","$/hr"],["mannedOperator","Manned Operator","$/SMU"],["calendarTime","Calendar Time","hrs/yr"],["diggerFleetRoundingThreshold","Digger Rounding","frac",0.05]].map(([k,l,u,s])=>(
             <div key={k} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><div style={{flex:1,color:P.txM,fontSize:14,fontWeight:500}}>{l}</div><input type="number" value={otherA[k]} onChange={e=>uO(k,parseFloat(e.target.value)||0)} step={s||0.01} style={{width:145,padding:"7px 12px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:7,color:P.tx,fontFamily:mf,fontSize:14,textAlign:"right"}}/><span style={{color:P.txD,fontSize:12,fontWeight:500,minWidth:55}}>{u}</span></div>))}
         </div></div>)}
@@ -828,17 +875,16 @@ export default function App(){
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Ore Tonnage & Grade</div>
               <ChartToggles series={[{key:"cOre",label:"Ore (bar)",color:mClr[0]},{key:"cFe",label:"Fe%",color:"#dc2626"},{key:"cSi",label:"Si%",color:"#2563eb"},{key:"cAl",label:"Al%",color:"#059669"},{key:"cP",label:"P%",color:"#d97706"}]} hidden={hiddenSeries} onToggle={togSeries}/>
               <ResponsiveContainer width="100%" height={300}><ComposedChart data={physData} margin={{top:10,right:50,left:10,bottom:40}}>
-                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={10} tickFormatter={function(v){return(v/1e3).toFixed(0)+"k"}}/><YAxis yAxisId="right" orientation="right" fontSize={10} tickFormatter={function(v){return v.toFixed(2)+"%"}}/><Tooltip formatter={function(v,n){return n==="Ore (t)"?fmtInt(v)+" t":Number(v).toFixed(2)+"%"}}/>
-                <Legend wrapperStyle={{fontSize:10}}/>{isVis("cOre")&&<Bar yAxisId="left" dataKey="Ore" fill={mClr[0]} name="Ore (t)"/>}{isVis("cFe")&&<Line yAxisId="right" type="monotone" dataKey="Fe" stroke="#dc2626" strokeWidth={2} name="Fe%" dot={{r:3}}/>}{isVis("cSi")&&<Line yAxisId="right" type="monotone" dataKey="Si" stroke="#2563eb" strokeWidth={2} name="Si%" dot={{r:3}}/>}{isVis("cAl")&&<Line yAxisId="right" type="monotone" dataKey="Al" stroke="#059669" strokeWidth={2} name="Al%" dot={{r:3}}/>}{isVis("cP")&&<Line yAxisId="right" type="monotone" dataKey="P" stroke="#d97706" strokeWidth={2} name="P%" dot={{r:3}}/>}
+                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={10} tickFormatter={function(v){return(v/1e3).toFixed(0)+"k"}}/><YAxis yAxisId="right" orientation="right" fontSize={10} domain={["auto","auto"]} tickFormatter={function(v){return Number(v).toFixed(2)+"%"}}/><Tooltip formatter={function(v,n){return n==="Ore (t)"?fmtInt(v)+" t":Number(v).toFixed(2)+"%"}}/>
+                <Legend wrapperStyle={{fontSize:10}}/>{isVis("cOre")&&<Bar yAxisId="left" dataKey="Ore" fill={mClr[0]} name="Ore (t)"/>}{isVis("cFe")&&<Line yAxisId="right" type="monotone" dataKey="Fe" stroke="#dc2626" strokeWidth={2} name="Fe%" dot={{r:3}} connectNulls={true}/>}{isVis("cSi")&&<Line yAxisId="right" type="monotone" dataKey="Si" stroke="#2563eb" strokeWidth={2} name="Si%" dot={{r:3}} connectNulls={true}/>}{isVis("cAl")&&<Line yAxisId="right" type="monotone" dataKey="Al" stroke="#059669" strokeWidth={2} name="Al%" dot={{r:3}} connectNulls={true}/>}{isVis("cP")&&<Line yAxisId="right" type="monotone" dataKey="P" stroke="#d97706" strokeWidth={2} name="P%" dot={{r:3}} connectNulls={true}/>}
               </ComposedChart></ResponsiveContainer>
             </div>
             {/* Cost per tonne */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Cost per Tonne by Period</div>
-              <ChartToggles series={[{key:"TotalCPT",label:"Total $/t",color:mClr[0]},{key:"TruckCPT",label:"Truck $/t",color:mClr[1]},{key:"DiggerCPT",label:"Digger $/t",color:mClr[2]}]} hidden={hiddenSeries} onToggle={togSeries}/>
-              <ResponsiveContainer width="100%" height={300}><LineChart data={pData} margin={{top:10,right:20,left:10,bottom:40}}>
-                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+v.toFixed(1)}}/><Tooltip formatter={function(v){return fmtC2(v)}}/>
-                <Legend wrapperStyle={{fontSize:11}}/>{isVis("TotalCPT")&&<Line type="monotone" dataKey="TotalCPT" stroke={mClr[0]} strokeWidth={2} name="Total $/t"/>}{isVis("TruckCPT")&&<Line type="monotone" dataKey="TruckCPT" stroke={mClr[1]} strokeWidth={2} name="Truck $/t"/>}{isVis("DiggerCPT")&&<Line type="monotone" dataKey="DiggerCPT" stroke={mClr[2]} strokeWidth={2} name="Digger $/t"/>}
-              </LineChart></ResponsiveContainer>
+              <ResponsiveContainer width="100%" height={300}><BarChart data={pData} margin={{top:10,right:20,left:10,bottom:40}}>
+                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+v.toFixed(2)}}/><Tooltip formatter={function(v){return fmtC2(v)}}/>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="TruckCPT" stackId="a" fill={mClr[0]} name="Truck $/t"/><Bar dataKey="DiggerCPT" stackId="a" fill={mClr[1]} name="Digger $/t"/>
+              </BarChart></ResponsiveContainer>
             </div>
             {/* Total cost stacked */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Total Cost Breakdown (Stacked)</div>
@@ -850,7 +896,7 @@ export default function App(){
             </div>
             {/* Fleet sizing */}
             <div style={Object.assign({},cardS,{gridColumn:"1 / -1"})}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Fleet Sizing by Period — by Fleet Combo</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(420px, 1fr))",gap:16,padding:16}}>{fleetChartData.map(function(fc,fi){return(<div key={fc.fleet.id} style={{border:"1px solid "+P.bd,borderRadius:8,overflow:"hidden"}}><div style={{padding:"8px 12px",background:P.priBg,color:mClr[fi%mClr.length],fontWeight:700,fontSize:12}}>{fc.fleet.name}</div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,padding:12}}><div><div style={{fontWeight:600,color:P.txM,fontSize:11,marginBottom:4}}>Truck Fleet</div><ResponsiveContainer width="100%" height={240}><BarChart data={fc.data} margin={{top:10,right:20,left:10,bottom:40}}><CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} allowDecimals={false}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Trucks" fill={mClr[0]}/><Bar dataKey="Chargers" fill={mClr[2]}/></BarChart></ResponsiveContainer></div><div><div style={{fontWeight:600,color:P.txM,fontSize:11,marginBottom:4}}>Digger Fleet</div><ResponsiveContainer width="100%" height={240}><BarChart data={fc.data} margin={{top:10,right:20,left:10,bottom:40}}><CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} allowDecimals={false}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Diggers" fill={mClr[1]}/></BarChart></ResponsiveContainer></div></div></div>)})}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:16,padding:16}}>{fleetChartData.map(function(fc,fi){return(<div key={fc.fleet.id} style={{border:"1px solid "+P.bd,borderRadius:8,overflow:"hidden"}}><div style={{padding:"8px 12px",background:P.priBg,color:mClr[fi%mClr.length],fontWeight:700,fontSize:12}}>{fc.fleet.name}</div><div style={{padding:12}}><div><div style={{fontWeight:600,color:P.txM,fontSize:11,marginBottom:4}}>Truck Fleet + Chargers</div><ResponsiveContainer width="100%" height={260}><ComposedChart data={fc.data} margin={{top:10,right:24,left:10,bottom:40}}><CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={10} allowDecimals={false}/><YAxis yAxisId="right" orientation="right" fontSize={10} allowDecimals={false}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Bar yAxisId="left" dataKey="Trucks" fill={mClr[0]} name="Trucks"/><Line yAxisId="right" type="monotone" dataKey="Chargers" stroke={mClr[2]} strokeWidth={2} dot={{r:3}} name="Chargers"/></ComposedChart></ResponsiveContainer></div><div style={{marginTop:12}}><div style={{fontWeight:600,color:P.txM,fontSize:11,marginBottom:4}}>Digger Fleet</div><ResponsiveContainer width="100%" height={240}><BarChart data={fc.data} margin={{top:10,right:20,left:10,bottom:40}}><CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} allowDecimals={false}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Diggers" fill={mClr[1]}/></BarChart></ResponsiveContainer></div></div></div>)})}</div>
             </div>
             {/* Cost split pie */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Cost Split — Digger vs Truck</div>

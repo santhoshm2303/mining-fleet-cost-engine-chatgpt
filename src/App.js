@@ -246,8 +246,6 @@ export default function App(){
   const [formulaSearch,setFormulaSearch]=useState("");
   const [showChartLabels,setShowChartLabels]=useState(true);
   const [chartRollup,setChartRollup]=useState("period");
-  const [fleetCfgName,setFleetCfgName]=useState("");
-  const [savedFleetCfgs,setSavedFleetCfgs]=useState([]);
   const [editingFormula,setEditingFormula]=useState(null);
   const [editText,setEditText]=useState("");
   const [collSec,setCollSec]=useState({});  // collapsed sections: key=sectionName, val=true
@@ -260,53 +258,6 @@ export default function App(){
   const togSeries=(k)=>setHiddenSeries(function(p){var n=Object.assign({},p);n[k]=!n[k];return n});
   const isVis=(k)=>!hiddenSeries[k];
   const fileRef=useRef();
-
-  useEffect(function(){
-    try{
-      const raw=localStorage.getItem("mfce_fleet_configs_v1");
-      const arr=raw?JSON.parse(raw):[];
-      setSavedFleetCfgs(Array.isArray(arr)?arr:[]);
-    }catch(_e){setSavedFleetCfgs([])}
-  },[]);
-
-  const persistFleetCfgs=function(arr){
-    setSavedFleetCfgs(arr);
-    try{localStorage.setItem("mfce_fleet_configs_v1",JSON.stringify(arr))}catch(_e){}
-  };
-
-  const saveFleetConfig=function(){
-    const name=(fleetCfgName||"").trim();
-    if(!name){window.alert("Enter a configuration name first.");return}
-    const payload={
-      name:name,
-      fleets:JSON.parse(JSON.stringify(fleets||[])),
-      savedAt:new Date().toISOString()
-    };
-    const next=[...(savedFleetCfgs||[]).filter(function(x){return x.name!==name}),payload].sort(function(a,b){return a.name.localeCompare(b.name)});
-    persistFleetCfgs(next);
-    setFleetCfgName(name);
-  };
-
-  const loadFleetConfig=function(name){
-    const hit=(savedFleetCfgs||[]).find(function(x){return x.name===name});
-    if(!hit||!Array.isArray(hit.fleets))return;
-    setFleets(hit.fleets.map(function(f,idx){
-      return Object.assign({},mkFleet(f.name||("Fleet "+(idx+1))),f,{
-        id:f.id||uid(),
-        name:f.name||("Fleet "+(idx+1)),
-        truckIdx:Math.max(0,Math.min((trucks||[]).length-1,parseInt(f.truckIdx||0))),
-        diggerIdx:Math.max(0,Math.min((diggers||[]).length-1,parseInt(f.diggerIdx||0))),
-        loadTime:parseFloat(f.loadTime||0)||0
-      });
-    }));
-    setFleetCfgName(name);
-  };
-
-  const deleteFleetConfig=function(name){
-    const next=(savedFleetCfgs||[]).filter(function(x){return x.name!==name});
-    persistFleetCfgs(next);
-    if(fleetCfgName===name)setFleetCfgName("");
-  };
 
   const scn=scenarios[activeScnIdx]||scenarios[0];
   const updScn=(fn)=>setScenarios(prev=>{const n=[...prev];n[activeScnIdx]=fn({...n[activeScnIdx]});return n});
@@ -620,19 +571,6 @@ export default function App(){
             <Btn onClick={()=>setFleets(p=>[...p,mkFleet(`Fleet ${p.length+1}`)])} solid>+ Add Fleet</Btn>
           </div>
           <p style={{color:P.txM,fontSize:13,marginBottom:8}}>Define all possible fleet combos (Truck + Digger). Activate fleets and assign physical sets per scenario in the Scenario Manager tab.</p>
-
-          <div style={{...cardS,padding:"10px 14px",marginBottom:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:P.blBg,borderColor:`${P.bl}22`}}>
-            <span style={{color:P.bl,fontWeight:700,fontSize:12}}>💾 Fleet Combo Configuration</span>
-            <input type="text" value={fleetCfgName} onChange={e=>setFleetCfgName(e.target.value)} placeholder="Configuration name..." style={{...selS,width:200,background:P.card}}/>
-            <Btn onClick={saveFleetConfig} color={P.gn} solid>Save</Btn>
-            <select value={fleetCfgName} onChange={e=>setFleetCfgName(e.target.value)} style={{...selS,minWidth:220,background:P.card}}>
-              <option value="">Load saved configuration...</option>
-              {savedFleetCfgs.map(function(cfg){return <option key={cfg.name} value={cfg.name}>{cfg.name}</option>})}
-            </select>
-            <Btn onClick={function(){if(fleetCfgName)loadFleetConfig(fleetCfgName)}} color={P.bl}>Load</Btn>
-            <Btn onClick={function(){if(fleetCfgName&&window.confirm(`Delete fleet configuration "${fleetCfgName}"?`))deleteFleetConfig(fleetCfgName)}} color={P.rd} small>Delete</Btn>
-            {!!savedFleetCfgs.length&&<span style={{color:P.txD,fontSize:11}}>{savedFleetCfgs.length} saved</span>}
-          </div>
 
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(300px, 1fr))",gap:14}}>
             {fleets.map((fl,fi)=>{

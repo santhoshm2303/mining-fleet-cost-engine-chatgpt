@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef } from "react";
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList, ComposedChart } from "recharts";
 
 /* ═══════════════════════════════════════════════════════════════════════
    MINING FLEET COST ENGINE v4
@@ -138,21 +138,41 @@ function calcWithFormulas(inp,formulas){
 function parseCSV(text){return text.split(/\r?\n/).filter(l=>l.trim()).map(l=>{const c=[];let cur="",q=false;for(let i=0;i<l.length;i++){if(l[i]==='"')q=!q;else if(l[i]===','&&!q){c.push(cur.trim());cur=""}else cur+=l[i]}c.push(cur.trim());return c})}
 function parseGenericCSV(text){
   const rows=parseCSV(text);if(rows.length<2)return null;
-  const hdr=rows[0];let dsc=2;for(let i=1;i<hdr.length;i++){if(/^\d/.test(hdr[i])){dsc=i;break}}
+  const hdr=(rows[0]||[]).map(function(x){return (x||"").trim()});
+  const hasDesc=((hdr[0]||"").toLowerCase()==="desc");
+  const rowLabelIdx=hasDesc?1:0;
+  let dsc=hasDesc?3:2;for(let i=dsc;i<hdr.length;i++){if(/^\d|^p\d/i.test(hdr[i]||"")){dsc=i;break}}
   const np=Math.max(...rows.map(r=>r.length))-dsc;
-  const rm={},labels=[];
-  for(const r of rows){const lb=(r[0]||"").trim();if(!lb)continue;labels.push(lb);rm[lb]=r;rm[lb.toLowerCase().replace(/[^a-z0-9]/g,"")]=r}
-  const gv=(lb,pi)=>{const row=rm[lb]||rm[(lb||"").toLowerCase().replace(/[^a-z0-9]/g,"")];if(!row)return 0;const v=row[dsc+pi];if(!v)return 0;const n=parseFloat(v.replace(/,/g,""));return isNaN(n)?0:n};
-  const gs=(lb,pi)=>{const row=rm[lb]||rm[(lb||"").toLowerCase().replace(/[^a-z0-9]/g,"")];return row?(row[dsc+pi]||""):""};
-  return{rm,labels,dsc,np,gv,gs};
+  const labels=[]; const labelsByDesc={}; const descs=[]; const rm={};
+  for(let ri=1;ri<rows.length;ri++){
+    const r=rows[ri];
+    const desc=((r[0]||"").trim()) || "Base Set";
+    const lb=((r[rowLabelIdx]||"").trim());
+    if(!lb)continue;
+    if(!labels.includes(lb))labels.push(lb);
+    if(!labelsByDesc[desc]){labelsByDesc[desc]=[];descs.push(desc)}
+    if(!labelsByDesc[desc].includes(lb))labelsByDesc[desc].push(lb);
+    const key=(desc+"||"+lb).toLowerCase().replace(/[^a-z0-9|]/g,"");
+    rm[key]=r;
+    rm[("all||"+lb).toLowerCase().replace(/[^a-z0-9|]/g,"")]=r;
+  }
+  const norm=function(desc,lb){return (((desc||"all")+"||"+(lb||"")).toLowerCase().replace(/[^a-z0-9|]/g,""))};
+  const gv=function(desc,lb,pi){
+    if(typeof lb==='undefined'){pi=desc;lb=null;desc='all'}
+    const row=rm[norm(desc,lb)]||rm[norm('all',lb)]||rm[norm(desc||'Base Set',lb)];if(!row)return 0;const v=row[dsc+pi];if(!v)return 0;const n=parseFloat(String(v).replace(/,/g,""));return isNaN(n)?0:n
+  };
+  const gs=function(desc,lb,pi){
+    if(typeof lb==='undefined'){pi=desc;lb=null;desc='all'}
+    const row=rm[norm(desc,lb)]||rm[norm('all',lb)]||rm[norm(desc||'Base Set',lb)];return row?((row[dsc+pi]||"").trim()):""
+  };
+  return{rm,labels,labelsByDesc,descs,rowLabelIdx,dsc,np,gv,gs,hasDesc};
 }
 
-// ─── PHYSICAL SET FIELDS ───────────────────────────────────────────────
+// ─── PHYSICAL SET FIELDS// ─── PHYSICAL SET FIELDS ───────────────────────────────────────────────
 const PHYS_FIELDS = [
   {key:"oreMined",label:"Ore Mined",unit:"t"},
   {key:"wasteMined",label:"Waste Mined",unit:"t"},
   {key:"totalMined",label:"Total Mined (tonnage driver)",unit:"t"},
-  {key:"totalRampMined",label:"Ramp Build Tonnes",unit:"t"},
   {key:"avgLoadedTravelTime",label:"Loaded Travel Time",unit:"min"},
   {key:"avgUnloadedTravelTime",label:"Unloaded Travel Time",unit:"min"},
   {key:"avgTkphDelay",label:"TKPH Delay",unit:"min"},
@@ -172,7 +192,7 @@ const mkScenario = (name="New Scenario") => ({
     {period:1,periodLabel:"2032/Q2",days:91,hours:2184,oreMined:0,wasteMined:77261,totalMined:77261,totalRampMined:77261,avgLoadedTravelTime:3.3,avgUnloadedTravelTime:2.5,avgTkphDelay:0,avgNetPower:255.9,oreFePct:61.5,oreSiPct:3.7,oreAlPct:2.2,orePPct:0.08},
   ],
   fieldMappings: [        // physical sets for this scenario
-    {id:uid(),name:"Base Set",fields:{oreMined:"Ore Mined",wasteMined:"Waste Mined",totalMined:"Total Mined",totalRampMined:"Total Mined",avgLoadedTravelTime:"Average loaded travel time",avgUnloadedTravelTime:"Average unloaded travel time",avgTkphDelay:"Average TKPH delay",avgNetPower:"Average Net Power",oreFePct:"Ore Fe %",oreSiPct:"Ore Si %",oreAlPct:"Ore Al %",orePPct:"Ore P %"}},
+    {id:uid(),name:"Base Set",desc:"Base Set",fields:{oreMined:"Ore Mined",wasteMined:"Waste Mined",totalMined:"Total Mined",avgLoadedTravelTime:"Average loaded travel time",avgUnloadedTravelTime:"Average unloaded travel time",avgTkphDelay:"Average TKPH delay",avgNetPower:"Average Net Power",oreFePct:"Ore Fe %",oreSiPct:"Ore Si %",oreAlPct:"Ore Al %",orePPct:"Ore P %"}},
   ],
   activeFleetIds: [],     // which global fleet combos are active for this scenario
   fleetPhysicalSets: {},  // maps fleet.id -> physicalSetIdx for this scenario
@@ -223,6 +243,8 @@ export default function App(){
   const [scenarios,setScenarios]=useState([mkScenario("Scenario ST"),mkScenario("Scenario LT")]);
   const [activeScnIdx,setActiveScnIdx]=useState(0);
   const [formulaSearch,setFormulaSearch]=useState("");
+  const [showChartLabels,setShowChartLabels]=useState(true);
+  const [chartRollup,setChartRollup]=useState("period");
   const [editingFormula,setEditingFormula]=useState(null);
   const [editText,setEditText]=useState("");
   const [collSec,setCollSec]=useState({});  // collapsed sections: key=sectionName, val=true
@@ -246,7 +268,14 @@ export default function App(){
     rd.onload=ev=>{try{
       const parsed=parseGenericCSV(ev.target.result);
       if(!parsed||parsed.np<1){updScn(s=>({...s,csvData:null,csvRawLabels:[]}));return}
-      updScn(s=>({...s,csvData:parsed,csvRawLabels:parsed.labels}));
+      const buildFields=function(desc){
+        const rows=(parsed.labelsByDesc[desc]||parsed.labels||[]);
+        const pick=function(opts){for(const o of opts){if(rows.includes(o))return o}return ""};
+        return {oreMined:pick(["Ore Mined"]),wasteMined:pick(["Waste Mined"]),totalMined:pick(["Total Mined","Total Mined (tonnage driver)"]),avgLoadedTravelTime:pick(["Average loaded travel time","Loaded Travel Time"]),avgUnloadedTravelTime:pick(["Average unloaded travel time","Unloaded Travel Time"]),avgTkphDelay:pick(["Average TKPH delay","TKPH Delay"]),avgNetPower:pick(["Average Net Power","Net Power"]),oreFePct:pick(["Ore Fe %"]),oreSiPct:pick(["Ore Si %"]),oreAlPct:pick(["Ore Al %"]),orePPct:pick(["Ore P %"])}
+      };
+      const descs=(parsed.descs&&parsed.descs.length?parsed.descs:["Base Set"]);
+      const fieldMappings=descs.map(function(desc){return {id:uid(),name:desc,desc:desc,fields:buildFields(desc)}});
+      updScn(s=>({...s,csvData:parsed,csvRawLabels:parsed.labels,fieldMappings:fieldMappings,fleetPhysicalSets:{}}));
     }catch(err){console.error(err)}};
     rd.readAsText(f);
   },[activeScnIdx]);
@@ -257,9 +286,10 @@ export default function App(){
     const mapping=scn.fieldMappings[psIdx]||scn.fieldMappings[0];
     if(!mapping)return null;
     if(scn.csvData){
-      const r={period:pi+1,periodLabel:scn.csvData.gs("Period",pi)||`P${pi+1}`,days:scn.csvData.gv("Days",pi)||91};
-      r.hours=scn.csvData.gv("Hours",pi)||r.days*24;
-      for(const pf of PHYS_FIELDS)r[pf.key]=mapping.fields[pf.key]?scn.csvData.gv(mapping.fields[pf.key],pi):0;
+      const desc=(mapping.desc||mapping.name||"Base Set");
+      const r={period:pi+1,periodLabel:scn.csvData.gs(desc,"Period",pi)||scn.csvData.gs("all","Period",pi)||`P${pi+1}`,days:scn.csvData.gv(desc,"Days",pi)||scn.csvData.gv("all","Days",pi)||91};
+      r.hours=scn.csvData.gv(desc,"Hours",pi)||scn.csvData.gv("all","Hours",pi)||r.days*24;
+      for(const pf of PHYS_FIELDS)r[pf.key]=mapping.fields[pf.key]?scn.csvData.gv(desc,mapping.fields[pf.key],pi):0;
       return r;
     }
     return scn.manualData[pi]||null;
@@ -304,6 +334,8 @@ export default function App(){
   const addManP=()=>updScn(s=>({...s,manualData:[...s.manualData,{period:s.manualData.length+1,periodLabel:`P${s.manualData.length+1}`,days:91,hours:2184,oreMined:0,wasteMined:0,totalMined:0,totalRampMined:0,avgLoadedTravelTime:10,avgUnloadedTravelTime:8,avgTkphDelay:0,avgNetPower:150,oreFePct:0,oreSiPct:0,oreAlPct:0,orePPct:0}]}));
   const updManP=(i,k,v)=>updScn(s=>{const d=[...s.manualData];d[i]={...d[i],[k]:v};if(k==="oreMined"||k==="wasteMined"){d[i].totalMined=(d[i].oreMined||0)+(d[i].wasteMined||0);d[i].totalRampMined=d[i].totalMined}if(k==="days")d[i].hours=v*24;return{...s,manualData:d}});
   const toggleFleetInScn=(fid)=>updScn(s=>{const ids=s.activeFleetIds.includes(fid)?s.activeFleetIds.filter(x=>x!==fid):[...s.activeFleetIds,fid];return{...s,activeFleetIds:ids}});
+  const getYearLabel=(label)=>{const m=String(label||'').match(/(20\d{2})/);return m?m[1]:String(label||'').split(/[\/\-]/)[0]||String(label||'')};
+  const rollupResultRows=(rows)=>{if(chartRollup!=="year")return rows.map(function(r){return Object.assign({},r,{Ore:(r.pd?.oreMined||0)*scn.unitMul,Waste:(r.pd?.wasteMined||0)*scn.unitMul,RampBuild:(r.pd?.totalRampMined||0)*scn.unitMul,Fe:r.pd?.oreFePct||0,Si:r.pd?.oreSiPct||0,Al:r.pd?.oreAlPct||0,P:r.pd?.orePPct||0,TruckCapex:r.res?.trkCapex||0,DiggerCapex:r.res?.digCapex||0,TruckOpex:r.res?.totTrkExc||0,DiggerOpex:r.res?.digOpxTotal||0,RehandleOpex:r.res?.digRehandle||0,ChargerCapex:r.res?.chgCapex||0,BatteryCapex:r.res?.totReplBatCost||0,TruckCPT:r.res?.trkPerT||0,DiggerCPT:r.res?.digOpxPerT||0,Trucks:r.res?.trkReqR||0,Diggers:r.res?.digFleet||0,Chargers:r.res?.chgStaRnd||0})}); const m={}; rows.forEach(function(r){var y=getYearLabel(r.periodLabel); if(!m[y])m[y]={periodLabel:y,Ore:0,Waste:0,RampBuild:0,oreWt:0,Fe:0,Si:0,Al:0,P:0,TruckCapex:0,DiggerCapex:0,TruckOpex:0,DiggerOpex:0,RehandleOpex:0,ChargerCapex:0,BatteryCapex:0,TruckCPT:0,DiggerCPT:0,Trucks:0,Diggers:0,Chargers:0,Diesel:0,Maint:0,Parts:0,GET:0,Operator:0,Other:0}; var t=m[y]; var ore=(r.pd?.oreMined||0)*scn.unitMul; t.Ore+=ore; t.Waste+=(r.pd?.wasteMined||0)*scn.unitMul; t.RampBuild+=(r.pd?.totalRampMined||0)*scn.unitMul; t.oreWt+=ore; t.Fe+=ore*((r.pd?.oreFePct)||0); t.Si+=ore*((r.pd?.oreSiPct)||0); t.Al+=ore*((r.pd?.oreAlPct)||0); t.P+=ore*((r.pd?.orePPct)||0); t.TruckCapex+=r.res?.trkCapex||0; t.DiggerCapex+=r.res?.digCapex||0; t.TruckOpex+=r.res?.totTrkExc||0; t.DiggerOpex+=r.res?.digOpxTotal||0; t.RehandleOpex+=r.res?.digRehandle||0; t.ChargerCapex+=r.res?.chgCapex||0; t.BatteryCapex+=r.res?.totReplBatCost||0; t.TruckCPT+=r.res?.trkPerT||0; t.DiggerCPT+=r.res?.digOpxPerT||0; t.Trucks=Math.max(t.Trucks,r.res?.trkReqR||0); t.Diggers=Math.max(t.Diggers,r.res?.digFleet||0); t.Chargers=Math.max(t.Chargers,r.res?.chgStaRnd||0);}); return Object.values(m).map(function(t){var c=t.oreWt||1; return Object.assign(t,{Fe:t.Fe/c,Si:t.Si/c,Al:t.Al/c,P:t.P/c});});};
 
   const navGroups=[
     {label:"Assumptions",items:[{id:"other",label:"General",icon:"⚙️"},{id:"truck",label:"Trucks",icon:"🚛"},{id:"digger",label:"Diggers",icon:"⛏️"},{id:"charts_assumptions",label:"Charts",icon:"📈"}]},
@@ -383,10 +415,10 @@ export default function App(){
             <table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
               <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}>
                 <th style={{...thS,width:50}}>Active</th>
+                <th style={{...thS,minWidth:180}}>Physical Set (tonnage & productivity driver)</th>
                 <th style={{...thS,minWidth:130}}>Fleet</th>
                 <th style={{...thS,minWidth:150}}>Truck</th>
                 <th style={{...thS,minWidth:150}}>Digger</th>
-                <th style={{...thS,minWidth:180}}>Physical Set (tonnage & productivity driver)</th>
               </tr></thead>
               <tbody>{fleets.map((fl,fi)=>{
                 const isActive=scn.activeFleetIds.length===0||scn.activeFleetIds.includes(fl.id);
@@ -397,15 +429,15 @@ export default function App(){
                   <td style={{padding:"8px 12px",textAlign:"center"}}>
                     <input type="checkbox" checked={isActive} onChange={()=>toggleFleetInScn(fl.id)} style={{width:18,height:18,cursor:"pointer"}}/>
                   </td>
-                  <td style={{padding:"8px 12px",color:mClr[fi%mClr.length],fontWeight:700,fontSize:13}}>{fl.name}</td>
-                  <td style={{padding:"8px 12px",color:P.txM,fontSize:12}}>{trk?.truckName}</td>
-                  <td style={{padding:"8px 12px",color:P.txM,fontSize:12}}>{dig?.diggerName}</td>
                   <td style={{padding:"6px 10px"}}>
                     <select value={psIdx} onChange={e=>setScenarios(prev=>{const n=[...prev];const fps=Object.assign({},n[activeScnIdx].fleetPhysicalSets);fps[fl.id]=parseInt(e.target.value);n[activeScnIdx]=Object.assign({},n[activeScnIdx],{fleetPhysicalSets:fps});return n})} disabled={!isActive}
                       style={{...selS,width:"100%",color:isActive?mClr[psIdx%mClr.length]:P.txD,fontWeight:600}}>
                       {scn.fieldMappings.map((m,mi)=><option key={mi} value={mi}>{m.name}</option>)}
                     </select>
                   </td>
+                  <td style={{padding:"6px 10px"}}><select value={fl.id} style={{...selS,width:"100%",color:mClr[fi%mClr.length],fontWeight:700}}>{fleets.map(function(opt){return <option key={opt.id} value={opt.id}>{opt.name}</option>})}</select></td>
+                  <td style={{padding:"8px 12px",color:P.txM,fontSize:12}}>{trk?.truckName}</td>
+                  <td style={{padding:"8px 12px",color:P.txM,fontSize:12}}>{dig?.diggerName}</td>
                 </tr>);
               })}</tbody>
             </table>
@@ -432,13 +464,14 @@ export default function App(){
             <div style={{...cardS,overflowX:"auto",maxHeight:500,overflowY:"auto"}}>
               <table style={{borderCollapse:"collapse",fontFamily:mf,fontSize:11,width:"100%"}}>
                 <thead><tr style={{background:P.secBg,borderBottom:"2px solid "+P.bdS,position:"sticky",top:0,zIndex:2}}>
-                  <th style={Object.assign({},thS,{position:"sticky",left:0,background:P.secBg,zIndex:3,minWidth:200})}>Row Label</th>
+                  <th style={Object.assign({},thS,{position:"sticky",left:0,background:P.secBg,zIndex:4,minWidth:120})}>Desc</th><th style={Object.assign({},thS,{position:"sticky",left:120,background:P.secBg,zIndex:3,minWidth:200})}>Row Label</th>
                   {Array.from({length:scn.csvData.np},function(_,i){return <th key={i} style={Object.assign({},thS,{textAlign:"right",minWidth:90})}>{scn.csvData.gs("Period",i)||("P"+(i+1))}</th>})}
                 </tr></thead>
-                <tbody>{scn.csvRawLabels.map(function(label,ri){
-                  return(<tr key={ri} style={{borderBottom:"1px solid "+P.bd,background:ri%2?P.input+"44":"transparent"}}>
-                    <td style={{padding:"4px 10px",color:P.txM,fontSize:11,fontWeight:500,position:"sticky",left:0,background:ri%2?P.input+"44":P.card,zIndex:1,whiteSpace:"nowrap"}}>{label}</td>
-                    {Array.from({length:scn.csvData.np},function(_,pi){var v=scn.csvData.gv(label,pi);var s=scn.csvData.gs(label,pi);return <td key={pi} style={{padding:"4px 8px",textAlign:"right",color:v!==0?P.tx:P.txD,fontSize:11}}>{s||"—"}</td>})}
+                <tbody>{(scn.csvData.descs&&scn.csvData.descs.length?scn.csvData.descs.flatMap(function(desc){return (scn.csvData.labelsByDesc[desc]||[]).map(function(label){return {desc:desc,label:label}})}):scn.csvRawLabels.map(function(label){return {desc:"Base Set",label:label}})).map(function(row,ri){
+                  var label=row.label,desc=row.desc;return(<tr key={ri} style={{borderBottom:"1px solid "+P.bd,background:ri%2?P.input+"44":"transparent"}}>
+                    <td style={{padding:"4px 10px",color:P.txD,fontSize:11,fontWeight:600,position:"sticky",left:0,background:ri%2?P.input+"44":P.card,zIndex:2,whiteSpace:"nowrap"}}>{desc}</td>
+                    <td style={{padding:"4px 10px",color:P.txM,fontSize:11,fontWeight:500,position:"sticky",left:120,background:ri%2?P.input+"44":P.card,zIndex:1,whiteSpace:"nowrap"}}>{label}</td>
+                    {Array.from({length:scn.csvData.np},function(_,pi){var v=scn.csvData.gv(desc,label,pi);var s=scn.csvData.gs(desc,label,pi);return <td key={pi} style={{padding:"4px 8px",textAlign:"right",color:v!==0?P.tx:P.txD,fontSize:11}}>{s||"—"}</td>})}
                   </tr>);
                 })}</tbody>
               </table>
@@ -467,14 +500,14 @@ export default function App(){
         {page==="mapping"&&(<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <ST icon="🔗">Field Mapping — {scn.name}</ST>
-            <Btn onClick={()=>updScn(s=>({...s,fieldMappings:[...s.fieldMappings,{id:uid(),name:`Set ${s.fieldMappings.length+1}`,fields:PHYS_FIELDS.reduce((a,f)=>({...a,[f.key]:""}),{})}]}))} solid>+ Add Physical Set</Btn>
+            <Btn onClick={()=>updScn(s=>({...s,fieldMappings:[...s.fieldMappings,{id:uid(),name:`Set ${s.fieldMappings.length+1}`,desc:`Set ${s.fieldMappings.length+1}`,fields:PHYS_FIELDS.reduce((a,f)=>({...a,[f.key]:""}),{})}]}))} solid>+ Add Physical Set</Btn>
           </div>
           <div style={{...cardS,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
             <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}>
               <th style={{...thS,minWidth:180}}>Calc Input</th><th style={{...thS,minWidth:45}}>Unit</th>
               {scn.fieldMappings.map((m,mi)=>(<th key={m.id} style={{...thS,minWidth:200}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"space-between"}}>
-                  <input type="text" value={m.name} onChange={e=>updScn(s=>{const fm=[...s.fieldMappings];fm[mi]={...fm[mi],name:e.target.value};return{...s,fieldMappings:fm}})} style={{padding:"4px 8px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:5,color:mClr[mi%mClr.length],fontFamily:ff,fontSize:12,fontWeight:700,width:120}}/>
+                  <input type="text" value={m.name} onChange={e=>updScn(s=>{const fm=[...s.fieldMappings];fm[mi]={...fm[mi],name:e.target.value,desc:e.target.value};return{...s,fieldMappings:fm}})} style={{padding:"4px 8px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:5,color:mClr[mi%mClr.length],fontFamily:ff,fontSize:12,fontWeight:700,width:120}}/><div style={{fontSize:10,color:P.txD,marginTop:4}}>Desc: {m.desc||m.name}</div>
                   {scn.fieldMappings.length>1&&<button onClick={()=>updScn(s=>({...s,fieldMappings:s.fieldMappings.filter((_,i)=>i!==mi)}))} style={{background:P.rdBg,border:`1px solid ${P.rd}22`,borderRadius:4,color:P.rd,cursor:"pointer",padding:"2px 6px",fontSize:11}}>×</button>}
                 </div>
               </th>))}
@@ -483,7 +516,7 @@ export default function App(){
               <td style={{padding:"8px 14px",color:P.txM,fontWeight:500}}>{pf.label}</td>
               <td style={{padding:"8px 8px",color:P.txD,fontSize:11,fontFamily:mf}}>{pf.unit}</td>
               {scn.fieldMappings.map((m,mi)=>(<td key={m.id} style={{padding:"4px 6px"}}>
-                {scn.csvData?(<select value={m.fields[pf.key]||""} onChange={e=>updMapping(mi,0,pf.key,e.target.value)} style={{...selS,width:"100%",minWidth:160,color:m.fields[pf.key]?P.tx:P.txD}}><option value="">— Select row —</option>{scn.csvRawLabels.map(l=><option key={l} value={l}>{l}</option>)}</select>)
+                {scn.csvData?(<select value={m.fields[pf.key]||""} onChange={e=>updMapping(mi,0,pf.key,e.target.value)} style={{...selS,width:"100%",minWidth:160,color:m.fields[pf.key]?P.tx:P.txD}}><option value="">— Select row —</option>{((scn.csvData.labelsByDesc&&scn.csvData.labelsByDesc[m.desc||m.name])||scn.csvRawLabels).map(l=><option key={l} value={l}>{l}</option>)}</select>)
                 :(<input type="text" value={m.fields[pf.key]||""} onChange={e=>updMapping(mi,0,pf.key,e.target.value)} placeholder="CSV row label..." style={{width:"100%",minWidth:160,padding:"6px 10px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:ff,fontSize:12}}/>)}
               </td>))}
             </tr>))}</tbody>
@@ -685,30 +718,30 @@ export default function App(){
 
         {/* ══ CHARTS — ASSUMPTIONS ══ */}
         {page==="charts_assumptions"&&(<div>
-          <ST icon="📈">Fleet Parameter Comparison</ST>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}><ST icon="📈">Fleet Parameter Comparison</ST><label style={{display:"flex",alignItems:"center",gap:8,color:P.txM,fontSize:12,fontWeight:600}}><input type="checkbox" checked={showChartLabels} onChange={e=>setShowChartLabels(e.target.checked)}/> Show data labels</label></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Truck Capex & Power System</div>
               <ResponsiveContainer width="100%" height={300}><BarChart data={trucks.map(function(t){return{name:t.truckName.substring(0,15),Capex:t.totalTruckCapex,PowerSystem:t.powerSystemCost}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="name" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+(v/1e6).toFixed(1)+"M"}}/><Tooltip formatter={function(v){return fmtCur(v)}}/>
-                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="Capex" fill={mClr[0]}/><Bar dataKey="PowerSystem" fill={mClr[1]}/>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="Capex" fill={mClr[0]}>{showChartLabels&&<LabelList dataKey="Capex" position="insideTop" formatter={function(v){return (v/1e6).toFixed(1)+"M"}/>}</Bar><Bar dataKey="PowerSystem" fill={mClr[1]}>{showChartLabels&&<LabelList dataKey="PowerSystem" position="insideTop" formatter={function(v){return (v/1e6).toFixed(1)+"M"}/>}</Bar>
               </BarChart></ResponsiveContainer>
             </div>
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Truck TUM Parameters (%)</div>
               <ResponsiveContainer width="100%" height={300}><BarChart data={trucks.map(function(t){return{name:t.truckName.substring(0,15),Availability:t.availability*100,UoA:t.useOfAvailability*100,OE:t.operatingEfficiency*100,PerfEff:t.performanceEfficiency*100}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="name" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} domain={[0,100]}/><Tooltip/>
-                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="Availability" fill={mClr[0]}/><Bar dataKey="UoA" fill={mClr[1]}/><Bar dataKey="OE" fill={mClr[2]}/><Bar dataKey="PerfEff" fill={mClr[3]}/>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="Availability" fill={mClr[0]}>{showChartLabels&&<LabelList dataKey="Availability" position="insideTop" formatter={function(v){return v.toFixed(0)}}/>}</Bar><Bar dataKey="UoA" fill={mClr[1]}>{showChartLabels&&<LabelList dataKey="UoA" position="insideTop" formatter={function(v){return v.toFixed(0)}}/>}</Bar><Bar dataKey="OE" fill={mClr[2]}>{showChartLabels&&<LabelList dataKey="OE" position="insideTop" formatter={function(v){return v.toFixed(0)}}/>}</Bar><Bar dataKey="PerfEff" fill={mClr[3]}>{showChartLabels&&<LabelList dataKey="PerfEff" position="insideTop" formatter={function(v){return v.toFixed(0)}}/>}</Bar>
               </BarChart></ResponsiveContainer>
             </div>
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Digger Dig Rate & Capex</div>
               <ResponsiveContainer width="100%" height={300}><BarChart data={diggers.map(function(d){return{name:d.diggerName.substring(0,18),DigRate:d.effectiveDigRate,CapexM:d.totalCapex/1e6}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="name" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10}/><Tooltip/>
-                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="DigRate" fill={mClr[0]} name="Dig Rate (t/hr)"/><Bar dataKey="CapexM" fill={mClr[1]} name="Capex ($M)"/>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="DigRate" fill={mClr[0]} name="Dig Rate (t/hr)">{showChartLabels&&<LabelList dataKey="DigRate" position="insideTop"/>}</Bar><Bar dataKey="CapexM" fill={mClr[1]} name="Capex ($M)">{showChartLabels&&<LabelList dataKey="CapexM" position="insideTop" formatter={function(v){return v.toFixed(1)}}/>}</Bar>
               </BarChart></ResponsiveContainer>
             </div>
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Battery & Charging</div>
               <ResponsiveContainer width="100%" height={300}><BarChart data={trucks.map(function(t){return{name:t.truckName.substring(0,15),BatteryCap:t.averageBatteryUsableCapacity,ChargeTime:t.chargingTime,LifeCyclesX100:t.equivalentFullLifeCycles/100}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="name" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10}/><Tooltip/>
-                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="BatteryCap" fill={mClr[0]} name="Usable Cap (kWh)"/><Bar dataKey="ChargeTime" fill={mClr[1]} name="Charge Time (min)"/><Bar dataKey="LifeCyclesX100" fill={mClr[2]} name="Life Cycles (x100)"/>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="BatteryCap" fill={mClr[0]} name="Usable Cap (kWh)">{showChartLabels&&<LabelList dataKey="BatteryCap" position="insideTop"/>}</Bar><Bar dataKey="ChargeTime" fill={mClr[1]} name="Charge Time (min)">{showChartLabels&&<LabelList dataKey="ChargeTime" position="insideTop"/>}</Bar><Bar dataKey="LifeCyclesX100" fill={mClr[2]} name="Life Cycles (x100)">{showChartLabels&&<LabelList dataKey="LifeCyclesX100" position="insideTop" formatter={function(v){return v.toFixed(0)}}/>}</Bar>
               </BarChart></ResponsiveContainer>
             </div>
           </div>
@@ -736,10 +769,10 @@ export default function App(){
 
         {/* ══ CHARTS — RESULTS ══ */}
         {page==="charts_results"&&(<div>
-          <ST icon="📈">Results Charts — {scn.name}</ST>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}><ST icon="📈">Results Charts — {scn.name}</ST><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{color:P.txM,fontSize:12,fontWeight:600}}>Roll up</span><select value={chartRollup} onChange={e=>setChartRollup(e.target.value)} style={selS}><option value="period">By period</option><option value="year">Yearly</option></select></div></div>
           {results.length===0?<p style={{color:P.txD}}>No results data.</p>:(function(){
-            var pData=results.filter(function(r){return r.res});
-            var physData=[];for(var pi2=0;pi2<numPeriods;pi2++){var fleet0=activeFleets[0];if(!fleet0)continue;var pd3=getPd(pi2,fleet0);if(!pd3)continue;physData.push({period:pd3.periodLabel||("P"+(pi2+1)),Ore:(pd3.oreMined||0)*scn.unitMul,Waste:(pd3.wasteMined||0)*scn.unitMul,RampBuild:(pd3.totalRampMined||0)*scn.unitMul,Fe:pd3.oreFePct||0,Si:pd3.oreSiPct||0,Al:pd3.oreAlPct||0,P:pd3.orePPct||0})}
+            var pData=rollupResultRows(results.filter(function(r){return r.res}));
+            var physData=pData.map(function(r){return {period:r.periodLabel,Ore:r.Ore,Waste:r.Waste,RampBuild:r.RampBuild,Fe:r.Fe,Si:r.Si,Al:r.Al,P:r.P}})
             return(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
             {/* Physicals: Tonnage stacked bar */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Mining Physicals — Tonnage</div>
@@ -760,25 +793,25 @@ export default function App(){
             {/* Cost per tonne */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Cost per Tonne by Period</div>
               <ChartToggles series={[{key:"TotalCPT",label:"Total $/t",color:mClr[0]},{key:"TruckCPT",label:"Truck $/t",color:mClr[1]},{key:"DiggerCPT",label:"Digger $/t",color:mClr[2]}]} hidden={hiddenSeries} onToggle={togSeries}/>
-              <ResponsiveContainer width="100%" height={300}><LineChart data={pData.map(function(r){return{period:r.periodLabel,TotalCPT:r.res.totPerT||0,TruckCPT:r.res.trkPerT||0,DiggerCPT:r.res.digOpxPerT||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
+              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,TruckCPT:r.TruckCPT||0,DiggerCPT:r.DiggerCPT||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+v.toFixed(1)}}/><Tooltip formatter={function(v){return fmtC2(v)}}/>
-                <Legend wrapperStyle={{fontSize:11}}/>{isVis("TotalCPT")&&<Line type="monotone" dataKey="TotalCPT" stroke={mClr[0]} strokeWidth={2} name="Total $/t"/>}{isVis("TruckCPT")&&<Line type="monotone" dataKey="TruckCPT" stroke={mClr[1]} strokeWidth={2} name="Truck $/t"/>}{isVis("DiggerCPT")&&<Line type="monotone" dataKey="DiggerCPT" stroke={mClr[2]} strokeWidth={2} name="Digger $/t"/>}
-              </LineChart></ResponsiveContainer>
+                <Legend wrapperStyle={{fontSize:11}}/>{isVis("TruckCPT")&&<Bar dataKey="TruckCPT" stackId="a" fill={mClr[1]} name="Truck $/t"/>}{isVis("DiggerCPT")&&<Bar dataKey="DiggerCPT" stackId="a" fill={mClr[2]} name="Digger $/t"/>}
+              </BarChart></ResponsiveContainer>
             </div>
             {/* Total cost stacked */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Total Cost Breakdown (Stacked)</div>
-              <ChartToggles series={[{key:"TruckOpex",label:"Truck exc Cpx",color:mClr[0]},{key:"DiggerOpex",label:"Digger Opex",color:mClr[1]},{key:"Rehandle",label:"Rehandle",color:mClr[2]}]} hidden={hiddenSeries} onToggle={togSeries}/>
-              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,TruckOpex:r.res.totTrkExc||0,DiggerOpex:r.res.digOpxTotal||0,Rehandle:r.res.digRehandle||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
+              <ChartToggles series={[{key:"TruckCapex",label:"Truck Capex",color:mClr[0]},{key:"DiggerCapex",label:"Digger Capex",color:mClr[1]},{key:"TruckOpex",label:"Truck Opex",color:mClr[2]},{key:"DiggerOpex",label:"Digger Opex",color:mClr[3]},{key:"RehandleOpex",label:"Rehandle Opex",color:mClr[4]},{key:"ChargerCapex",label:"Charger Capex",color:mClr[5]},{key:"BatteryCapex",label:"Battery Capex",color:"#6b7280"}]} hidden={hiddenSeries} onToggle={togSeries}/>
+              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,TruckCapex:r.TruckCapex||0,DiggerCapex:r.DiggerCapex||0,TruckOpex:r.TruckOpex||0,DiggerOpex:r.DiggerOpex||0,RehandleOpex:r.RehandleOpex||0,ChargerCapex:r.ChargerCapex||0,BatteryCapex:r.BatteryCapex||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+(v/1e6).toFixed(1)+"M"}}/><Tooltip formatter={function(v){return fmtCur(v)}}/>
-                <Legend wrapperStyle={{fontSize:11}}/>{isVis("TruckOpex")&&<Bar dataKey="TruckOpex" stackId="a" fill={mClr[0]} name="Truck exc Cpx"/>}{isVis("DiggerOpex")&&<Bar dataKey="DiggerOpex" stackId="a" fill={mClr[1]} name="Digger Opex"/>}{isVis("Rehandle")&&<Bar dataKey="Rehandle" stackId="a" fill={mClr[2]} name="Rehandle"/>}
+                <Legend wrapperStyle={{fontSize:11}}/>{isVis("TruckCapex")&&<Bar dataKey="TruckCapex" stackId="a" fill={mClr[0]} name="Truck Capex"/>}{isVis("DiggerCapex")&&<Bar dataKey="DiggerCapex" stackId="a" fill={mClr[1]} name="Digger Capex"/>}{isVis("TruckOpex")&&<Bar dataKey="TruckOpex" stackId="a" fill={mClr[2]} name="Truck Opex"/>}{isVis("DiggerOpex")&&<Bar dataKey="DiggerOpex" stackId="a" fill={mClr[3]} name="Digger Opex"/>}{isVis("RehandleOpex")&&<Bar dataKey="RehandleOpex" stackId="a" fill={mClr[4]} name="Rehandle Opex"/>}{isVis("ChargerCapex")&&<Bar dataKey="ChargerCapex" stackId="a" fill={mClr[5]} name="Charger Capex"/>}{isVis("BatteryCapex")&&<Bar dataKey="BatteryCapex" stackId="a" fill="#6b7280" name="Battery Capex"/>}
               </BarChart></ResponsiveContainer>
             </div>
             {/* Fleet sizing */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Fleet Sizing by Period</div>
-              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,Trucks:r.res.trkReqR||0,Diggers:r.res.digFleet||0,Chargers:r.res.chgStaRnd||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
-                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} allowDecimals={false}/><Tooltip/>
-                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="Trucks" fill={mClr[0]}/><Bar dataKey="Diggers" fill={mClr[1]}/><Bar dataKey="Chargers" fill={mClr[2]}/>
-              </BarChart></ResponsiveContainer>
+              <ResponsiveContainer width="100%" height={300}><ComposedChart data={pData.map(function(r){return{period:r.periodLabel,Trucks:r.Trucks||0,Diggers:r.Diggers||0,Chargers:r.Chargers||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
+                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={10} allowDecimals={false}/><YAxis yAxisId="right" orientation="right" fontSize={10} allowDecimals={false}/><Tooltip/>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar yAxisId="left" dataKey="Trucks" fill={mClr[0]}/><Bar yAxisId="left" dataKey="Diggers" fill={mClr[1]}/><Line yAxisId="right" type="monotone" dataKey="Chargers" stroke={mClr[2]} strokeWidth={2} dot={{r:3}}/>
+              </ComposedChart></ResponsiveContainer>
             </div>
             {/* Cost split pie */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Cost Split — Digger vs Truck</div>

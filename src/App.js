@@ -278,20 +278,27 @@ export default function App(){
     const name=(fleetCfgName||"").trim();
     if(!name){window.alert("Enter a configuration name first.");return}
     const payload={
-      name,
-      fleets: JSON.parse(JSON.stringify(fleets||[])),
-      trucksCount:(trucks||[]).length,
-      diggersCount:(diggers||[]).length,
+      name:name,
+      fleets:JSON.parse(JSON.stringify(fleets||[])),
       savedAt:new Date().toISOString()
     };
     const next=[...(savedFleetCfgs||[]).filter(function(x){return x.name!==name}),payload].sort(function(a,b){return a.name.localeCompare(b.name)});
     persistFleetCfgs(next);
+    setFleetCfgName(name);
   };
 
   const loadFleetConfig=function(name){
     const hit=(savedFleetCfgs||[]).find(function(x){return x.name===name});
     if(!hit||!Array.isArray(hit.fleets))return;
-    setFleets(hit.fleets.map(function(f,idx){return Object.assign({},mkFleet(f.name||("Fleet "+(idx+1))),f,{id:f.id||uid(),name:f.name||("Fleet "+(idx+1)),truckIdx:Math.max(0,Math.min((trucks||[]).length-1,parseInt(f.truckIdx||0))),diggerIdx:Math.max(0,Math.min((diggers||[]).length-1,parseInt(f.diggerIdx||0))),loadTime:parseFloat(f.loadTime||0)||0})}));
+    setFleets(hit.fleets.map(function(f,idx){
+      return Object.assign({},mkFleet(f.name||("Fleet "+(idx+1))),f,{
+        id:f.id||uid(),
+        name:f.name||("Fleet "+(idx+1)),
+        truckIdx:Math.max(0,Math.min((trucks||[]).length-1,parseInt(f.truckIdx||0))),
+        diggerIdx:Math.max(0,Math.min((diggers||[]).length-1,parseInt(f.diggerIdx||0))),
+        loadTime:parseFloat(f.loadTime||0)||0
+      });
+    }));
     setFleetCfgName(name);
   };
 
@@ -618,7 +625,7 @@ export default function App(){
             <span style={{color:P.bl,fontWeight:700,fontSize:12}}>💾 Fleet Combo Configuration</span>
             <input type="text" value={fleetCfgName} onChange={e=>setFleetCfgName(e.target.value)} placeholder="Configuration name..." style={{...selS,width:200,background:P.card}}/>
             <Btn onClick={saveFleetConfig} color={P.gn} solid>Save</Btn>
-            <select value={fleetCfgName} onChange={e=>{setFleetCfgName(e.target.value);if(e.target.value)loadFleetConfig(e.target.value)}} style={{...selS,minWidth:220,background:P.card}}>
+            <select value={fleetCfgName} onChange={e=>setFleetCfgName(e.target.value)} style={{...selS,minWidth:220,background:P.card}}>
               <option value="">Load saved configuration...</option>
               {savedFleetCfgs.map(function(cfg){return <option key={cfg.name} value={cfg.name}>{cfg.name}</option>})}
             </select>

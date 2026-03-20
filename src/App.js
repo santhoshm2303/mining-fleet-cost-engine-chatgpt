@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList, ComposedChart } from "recharts";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -241,6 +241,9 @@ export default function App(){
   const [otherA,setOtherA]=useState(defaultOther);
   const [formulas,setFormulas]=useState(defaultFormulas);
   const [fleets,setFleets]=useState([mkFleet("Fleet 1",0,0,0),mkFleet("Fleet 2",1,1,0)]);
+  const [fleetConfigName,setFleetConfigName]=useState("");
+  const [savedFleetConfigs,setSavedFleetConfigs]=useState(loadFleetConfigs);
+  const [selectedFleetConfig,setSelectedFleetConfig]=useState("");
   const [scenarios,setScenarios]=useState([mkScenario("Scenario ST"),mkScenario("Scenario LT")]);
   const [activeScnIdx,setActiveScnIdx]=useState(0);
   const [formulaSearch,setFormulaSearch]=useState("");
@@ -258,6 +261,9 @@ export default function App(){
   const togSeries=(k)=>setHiddenSeries(function(p){var n=Object.assign({},p);n[k]=!n[k];return n});
   const isVis=(k)=>!hiddenSeries[k];
   const fileRef=useRef();
+
+  useEffect(function(){ saveFleetConfigs(savedFleetConfigs); },[savedFleetConfigs]);
+
 
   const scn=scenarios[activeScnIdx]||scenarios[0];
   const updScn=(fn)=>setScenarios(prev=>{const n=[...prev];n[activeScnIdx]=fn({...n[activeScnIdx]});return n});
@@ -331,6 +337,26 @@ export default function App(){
   const updD=(i,f,v)=>setDiggers(p=>{const n=[...p];n[i]={...n[i],[f]:v};return n});
   const uO=(k,v)=>setOtherA(p=>({...p,[k]:v}));
   const updFleet=(i,k,v)=>setFleets(p=>{const n=[...p];n[i]={...n[i],[k]:v};return n});
+  const saveCurrentFleetConfig=()=>{
+    const name=(fleetConfigName||"").trim();
+    if(!name)return;
+    const snapshot=fleets.map(function(f){return {name:f.name,truckIdx:f.truckIdx,diggerIdx:f.diggerIdx,loadTime:f.loadTime};});
+    setSavedFleetConfigs(function(prev){
+      const next=(prev||[]).filter(function(x){return x.name!==name;});
+      return [{name:name,fleets:snapshot,savedAt:new Date().toISOString()}, ...next];
+    });
+    setSelectedFleetConfig(name);
+  };
+  const loadSelectedFleetConfig=()=>{
+    const chosen=(savedFleetConfigs||[]).find(function(x){return x.name===selectedFleetConfig;});
+    if(!chosen||!Array.isArray(chosen.fleets)||!chosen.fleets.length)return;
+    setFleets(chosen.fleets.map(function(f,i){return {...mkFleet(f.name||('Fleet '+(i+1)),f.truckIdx||0,f.diggerIdx||0),loadTime:(f.loadTime??3.5)};}));
+  };
+  const deleteSelectedFleetConfig=()=>{
+    if(!selectedFleetConfig)return;
+    setSavedFleetConfigs(function(prev){return (prev||[]).filter(function(x){return x.name!==selectedFleetConfig;});});
+    setSelectedFleetConfig("");
+  };
   const updMapping=(si,fi,fk,v)=>updScn(s=>{const m=[...s.fieldMappings];m[si]={...m[si],fields:{...m[si].fields,[fk]:v}};return{...s,fieldMappings:m}});
   const addManP=()=>updScn(s=>({...s,manualData:[...s.manualData,{period:s.manualData.length+1,periodLabel:`P${s.manualData.length+1}`,days:91,hours:2184,oreMined:0,wasteMined:0,totalMined:0,totalRampMined:0,avgLoadedTravelTime:10,avgUnloadedTravelTime:8,avgTkphDelay:0,avgNetPower:150,oreFePct:0,oreSiPct:0,oreAlPct:0,orePPct:0}]}));
   const updManP=(i,k,v)=>updScn(s=>{const d=[...s.manualData];d[i]={...d[i],[k]:v};if(k==="oreMined"||k==="wasteMined"){d[i].totalMined=(d[i].oreMined||0)+(d[i].wasteMined||0);d[i].totalRampMined=d[i].totalMined}if(k==="days")d[i].hours=v*24;return{...s,manualData:d}});
@@ -566,9 +592,19 @@ export default function App(){
 
         {/* ══ FLEETS ══ */}
         {page==="fleets"&&(<div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <ST icon="🏗️">Fleet Combinations (Global)</ST>
-            <Btn onClick={()=>setFleets(p=>[...p,mkFleet(`Fleet ${p.length+1}`)])} solid>+ Add Fleet</Btn>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <input type="text" value={fleetConfigName} onChange={e=>setFleetConfigName(e.target.value)} placeholder="Fleet config name..." style={{...selS,width:180}}/>
+              <Btn onClick={saveCurrentFleetConfig} color={P.gn} solid>Save Config</Btn>
+              <select value={selectedFleetConfig} onChange={e=>setSelectedFleetConfig(e.target.value)} style={{...selS,width:180}}>
+                <option value="">Load saved config...</option>
+                {savedFleetConfigs.map(function(cfg){return <option key={cfg.name} value={cfg.name}>{cfg.name}</option>;})}
+              </select>
+              <Btn onClick={loadSelectedFleetConfig} color={P.bl} solid>Load</Btn>
+              <Btn onClick={deleteSelectedFleetConfig} color={P.rd} small>Delete</Btn>
+              <Btn onClick={()=>setFleets(p=>[...p,mkFleet(`Fleet ${p.length+1}`)])} solid>+ Add Fleet</Btn>
+            </div>
           </div>
           <p style={{color:P.txM,fontSize:13,marginBottom:8}}>Define all possible fleet combos (Truck + Digger). Activate fleets and assign physical sets per scenario in the Scenario Manager tab.</p>
 

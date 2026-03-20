@@ -304,6 +304,7 @@ export default function App(){
     rd.readAsText(f);
   },[activeScnIdx]);
 
+
   // Resolve period data for a physical set in active scenario
   const getPdForSet=useCallback((pi,setIdx)=>{
     const mapping=scn.fieldMappings[setIdx]||scn.fieldMappings[0];
@@ -319,23 +320,23 @@ export default function App(){
   },[scn]);
 
   const numPeriods=scn.csvData?scn.csvData.np:scn.manualData.length;
-  const scenarioAssignments=useMemo(()=>getScenarioAssignments(scn),[scn,fleets]);
-  const activeFleets=useMemo(()=>scenarioAssignments.map(function(a){return a.fleet;}),[scenarioAssignments]);
+  const activeFleets=fleets.filter(f=>scn.activeFleetIds.length===0||scn.activeFleetIds.includes(f.id));
+  const activeAssignments=useMemo(function(){ return getScenarioAssignments(scn); },[scn,fleets]);
 
   // Calculate results
   const results=useMemo(()=>{
     const all=[];
     for(let pi=0;pi<numPeriods;pi++){
-      for(const assignment of scenarioAssignments){
-        const fleet=assignment.fleet;
-        const pd=getPdForSet(pi,assignment.setIdx);if(!pd)continue;
+      for(const row of activeAssignments){
+        const fleet=row.fleet;
+        const pd=getPdForSet(pi,row.setIdx);if(!pd||!fleet)continue;
         const ti=Math.min(fleet.truckIdx,trucks.length-1),di=Math.min(fleet.diggerIdx,diggers.length-1);
         const res=calcWithFormulas({totalMined:(pd.totalMined||0)*scn.unitMul,oreMined:(pd.oreMined||0)*scn.unitMul,totalRampMined:(pd.totalRampMined||pd.totalMined||0)*scn.unitMul,avgLoadedTravelTime:pd.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd.avgUnloadedTravelTime||0,avgNetPower:pd.avgNetPower||0,avgTkphDelay:pd.avgTkphDelay||0,schedPeriod:scn.schedPeriod,calendarDays:pd.days||91,calendarHours:pd.hours||2184,truck:trucks[ti],digger:diggers[di],other:otherA,fleet:fleet},formulas);
-        all.push({pi,periodLabel:pd.periodLabel||`P${pi+1}`,fleet,fleetName:fleet.name,physicalSetName:assignment.mapping?.name||`Set ${assignment.setIdx+1}`,setIdx:assignment.setIdx,truckName:trucks[ti]?.truckName,diggerName:diggers[di]?.diggerName,equipKey:`${fleet.truckIdx}-${fleet.diggerIdx}`,res,pd});
+        all.push({pi,setIdx:row.setIdx,setName:(row.mapping&& (row.mapping.name||row.mapping.desc)) || `Set ${row.setIdx+1}`,periodLabel:pd.periodLabel||`P${pi+1}`,fleet,fleetName:fleet.name,truckName:trucks[ti]?.truckName,diggerName:diggers[di]?.diggerName,equipKey:`${fleet.truckIdx}-${fleet.diggerIdx}`,res,pd});
       }
     }
     return all;
-  },[numPeriods,scenarioAssignments,trucks,diggers,otherA,formulas,scn,getPdForSet]);
+  },[numPeriods,activeAssignments,trucks,diggers,otherA,formulas,scn,getPdForSet]);
 
   const equipGroups=useMemo(()=>{
     const g={};for(const r of results){if(!g[r.equipKey])g[r.equipKey]={key:r.equipKey,truckName:r.truckName,diggerName:r.diggerName,fleetNames:[],results:[]};if(!g[r.equipKey].fleetNames.includes(r.fleetName))g[r.equipKey].fleetNames.push(r.fleetName);g[r.equipKey].results.push(r)}
@@ -345,35 +346,12 @@ export default function App(){
   const totals=useMemo(()=>{const t={m:0,c:0};results.forEach(r=>{if(!r.res)return;t.m+=(r.pd?.totalMined||0)*scn.unitMul;t.c+=r.res.totCost||0});t.cpt=t.m>0?t.c/t.m:0;return t},[results,scn.unitMul]);
 
   const testResult=useMemo(()=>{
-    const assignment=scenarioAssignments[testFleetIdx]||scenarioAssignments[0];if(!assignment||!assignment.fleet)return null;
-    const fleet=assignment.fleet;
-    const pd=getPdForSet(testPeriodIdx,assignment.setIdx);if(!pd)return null;
+    const fleet=activeFleets[testFleetIdx]||activeFleets[0];if(!fleet)return null;
+    const testSetIdx=(scn.fleetPhysicalSets&&scn.fleetPhysicalSets[fleet.id])||0;
+    const pd=getPdForSet(testPeriodIdx,testSetIdx);if(!pd)return null;
     const ti=Math.min(fleet.truckIdx,trucks.length-1),di=Math.min(fleet.diggerIdx,diggers.length-1);
     return calcWithFormulas({totalMined:(pd.totalMined||0)*scn.unitMul,oreMined:(pd.oreMined||0)*scn.unitMul,totalRampMined:(pd.totalRampMined||pd.totalMined||0)*scn.unitMul,avgLoadedTravelTime:pd.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd.avgUnloadedTravelTime||0,avgNetPower:pd.avgNetPower||0,avgTkphDelay:pd.avgTkphDelay||0,schedPeriod:scn.schedPeriod,calendarDays:pd.days||91,calendarHours:pd.hours||2184,truck:trucks[ti],digger:diggers[di],other:otherA,fleet:fleet},formulas);
-  },[testPeriodIdx,testFleetIdx,scenarioAssignments,trucks,diggers,otherA,formulas,scn,getPdForSet]);
-
-  const getAssignedFleetIdForSet=useCallback((setIdx,scenario)=>{
-    var s=scenario||scn;
-    if(s.physicalSetFleetIds && s.physicalSetFleetIds[setIdx]!==undefined) return s.physicalSetFleetIds[setIdx] || "";
-    const explicit=fleets.find(function(f){
-      const ps=(s.fleetPhysicalSets[f.id]??-1);
-      const active=(s.activeFleetIds.length===0||s.activeFleetIds.includes(f.id));
-      return active&&ps===setIdx;
-    });
-    if(explicit)return explicit.id;
-    if(s.activeFleetIds.length===0&&fleets[setIdx])return fleets[setIdx].id;
-    return "";
-  },[scn,fleets]);
-
-  const getScenarioAssignments=useCallback((scenario)=>{
-    var s=scenario||scn;
-    var maps=(s.fieldMappings&&s.fieldMappings.length?s.fieldMappings:[{name:"Base Set",fields:{}}]);
-    return maps.map(function(mapping,mi){
-      var fleetId=getAssignedFleetIdForSet(mi,s);
-      var fleet=fleets.find(function(f){return f.id===fleetId;})||null;
-      return {setIdx:mi,mapping:mapping,fleetId:fleetId,fleet:fleet};
-    }).filter(function(row){return !!row.fleetId && !!row.fleet;});
-  },[scn,fleets,getAssignedFleetIdForSet]);
+  },[testPeriodIdx,testFleetIdx,activeFleets,trucks,diggers,otherA,formulas,scn,getPdForSet]);
 
   const updT=(i,f,v)=>setTrucks(p=>{const n=[...p];n[i]={...n[i],[f]:v};return n});
   const updD=(i,f,v)=>setDiggers(p=>{const n=[...p];n[i]={...n[i],[f]:v};return n});
@@ -688,7 +666,7 @@ export default function App(){
           <div style={{...cardS,padding:"10px 14px",marginBottom:10,display:"flex",gap:14,alignItems:"center",flexWrap:"wrap",background:P.gnBg,borderColor:`${P.gn}33`}}>
             <span style={{color:P.gn,fontWeight:700,fontSize:12}}>🧪 Test:</span>
             <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Period:</span><select value={testPeriodIdx} onChange={e=>setTestPeriodIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{Array.from({length:numPeriods},(_,i)=><option key={i} value={i}>P{i+1}</option>)}</select></div>
-            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Fleet:</span><select value={testFleetIdx} onChange={e=>setTestFleetIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{scenarioAssignments.map((a,i)=><option key={i} value={i}>{(a.mapping?.name||("Set "+(i+1)))+" → "+a.fleet.name}</option>)}</select></div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Fleet:</span><select value={testFleetIdx} onChange={e=>setTestFleetIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{activeFleets.map((f,i)=><option key={i} value={i}>{f.name}</option>)}</select></div>
           </div>
           <div style={{...cardS,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
             <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}>

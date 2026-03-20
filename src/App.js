@@ -195,7 +195,8 @@ const mkScenario = (name="New Scenario") => ({
     {id:uid(),name:"Base Set",desc:"Base Set",fields:{oreMined:"Ore Mined",wasteMined:"Waste Mined",totalMined:"Total Mined",avgLoadedTravelTime:"Average loaded travel time",avgUnloadedTravelTime:"Average unloaded travel time",avgTkphDelay:"Average TKPH delay",avgNetPower:"Average Net Power",oreFePct:"Ore Fe %",oreSiPct:"Ore Si %",oreAlPct:"Ore Al %",orePPct:"Ore P %"}},
   ],
   activeFleetIds: [],     // which global fleet combos are active for this scenario
-  fleetPhysicalSets: {},  // maps fleet.id -> physicalSetIdx for this scenario
+  fleetPhysicalSets: {},  // legacy: maps fleet.id -> physicalSetIdx for this scenario
+  physicalSetFleetIds: {}, // maps physicalSetIdx -> fleet.id for this scenario
   schedPeriod: "Quarterly",
   unitMul: 1,
 });
@@ -275,7 +276,7 @@ export default function App(){
       };
       const descs=(parsed.descs&&parsed.descs.length?parsed.descs:["Base Set"]);
       const fieldMappings=descs.map(function(desc){return {id:uid(),name:desc,desc:desc,fields:buildFields(desc)}});
-      updScn(s=>({...s,csvData:parsed,csvRawLabels:parsed.labels,fieldMappings:fieldMappings,fleetPhysicalSets:{}}));
+      updScn(s=>({...s,csvData:parsed,csvRawLabels:parsed.labels,fieldMappings:fieldMappings,fleetPhysicalSets:{},physicalSetFleetIds:{}}));
     }catch(err){console.error(err)}};
     rd.readAsText(f);
   },[activeScnIdx]);
@@ -334,49 +335,44 @@ export default function App(){
   const addManP=()=>updScn(s=>({...s,manualData:[...s.manualData,{period:s.manualData.length+1,periodLabel:`P${s.manualData.length+1}`,days:91,hours:2184,oreMined:0,wasteMined:0,totalMined:0,totalRampMined:0,avgLoadedTravelTime:10,avgUnloadedTravelTime:8,avgTkphDelay:0,avgNetPower:150,oreFePct:0,oreSiPct:0,oreAlPct:0,orePPct:0}]}));
   const updManP=(i,k,v)=>updScn(s=>{const d=[...s.manualData];d[i]={...d[i],[k]:v};if(k==="oreMined"||k==="wasteMined"){d[i].totalMined=(d[i].oreMined||0)+(d[i].wasteMined||0);d[i].totalRampMined=d[i].totalMined}if(k==="days")d[i].hours=v*24;return{...s,manualData:d}});
   const toggleFleetInScn=(fid)=>updScn(s=>{const ids=s.activeFleetIds.includes(fid)?s.activeFleetIds.filter(x=>x!==fid):[...s.activeFleetIds,fid];return{...s,activeFleetIds:ids}});
-  const getAssignedFleetIdForSet=(setIdx)=>{
+  const getAssignedFleetIdForSet=(setIdx,scenario)=>{
+    var s=scenario||scn;
+    if(s.physicalSetFleetIds && s.physicalSetFleetIds[setIdx]!==undefined) return s.physicalSetFleetIds[setIdx] || "";
     const explicit=fleets.find(function(f){
-      const ps=(scn.fleetPhysicalSets[f.id]??-1);
-      const active=(scn.activeFleetIds.length===0||scn.activeFleetIds.includes(f.id));
+      const ps=(s.fleetPhysicalSets[f.id]??-1);
+      const active=(s.activeFleetIds.length===0||s.activeFleetIds.includes(f.id));
       return active&&ps===setIdx;
     });
     if(explicit)return explicit.id;
-    if(scn.activeFleetIds.length===0&&fleets[setIdx])return fleets[setIdx].id;
+    if(s.activeFleetIds.length===0&&fleets[setIdx])return fleets[setIdx].id;
     return "";
   };
+  const getScenarioAssignments=(scenario)=>{
+    var s=scenario||scn;
+    var maps=(s.fieldMappings&&s.fieldMappings.length?s.fieldMappings:[{name:"Base Set",fields:{}}]);
+    return maps.map(function(mapping,mi){
+      var fleetId=getAssignedFleetIdForSet(mi,s);
+      var fleet=fleets.find(function(f){return f.id===fleetId;})||null;
+      return {setIdx:mi,mapping:mapping,fleetId:fleetId,fleet:fleet};
+    }).filter(function(row){return !!row.fleetId && !!row.fleet;});
+  };
   const setFleetForPhysicalSet=(setIdx,fleetId)=>updScn(function(s){
-    var fps=Object.assign({},s.fleetPhysicalSets||{});
-    var ids=s.activeFleetIds.length===0?fleets.map(function(f){return f.id}):[].concat(s.activeFleetIds);
-    var prevAssigned="";
-    fleets.forEach(function(f){
-      var active=(s.activeFleetIds.length===0||ids.includes(f.id));
-      if(active&&(fps[f.id]??-1)===setIdx)prevAssigned=f.id;
-    });
-    if(prevAssigned&&prevAssigned!==fleetId){
-      delete fps[prevAssigned];
-      ids=ids.filter(function(id){return id!==prevAssigned});
-    }
-    if(fleetId){
-      if(!ids.includes(fleetId))ids.push(fleetId);
-      fps[fleetId]=setIdx;
-    }
-    return {...s,activeFleetIds:ids,fleetPhysicalSets:fps};
+    var psf=Object.assign({},s.physicalSetFleetIds||{});
+    if(fleetId) psf[setIdx]=fleetId; else delete psf[setIdx];
+    return {...s,physicalSetFleetIds:psf};
   });
   const togglePhysicalSetActive=(setIdx)=>{
     const assignedId=getAssignedFleetIdForSet(setIdx);
     if(assignedId){
       updScn(function(s){
-        var fps=Object.assign({},s.fleetPhysicalSets||{});
-        delete fps[assignedId];
-        var ids=(s.activeFleetIds.length===0?fleets.map(function(f){return f.id}):[].concat(s.activeFleetIds)).filter(function(id){return id!==assignedId});
-        return {...s,activeFleetIds:ids,fleetPhysicalSets:fps};
+        var psf=Object.assign({},s.physicalSetFleetIds||{});
+        delete psf[setIdx];
+        return {...s,physicalSetFleetIds:psf};
       });
       return;
     }
-    var used={};
-    fleets.forEach(function(f){var sid=getAssignedFleetIdForSet(setIdx); if(sid)used[sid]=true;});
-    var available=fleets.find(function(f){return !Object.keys(scn.fleetPhysicalSets||{}).some(function(fid){return (scn.activeFleetIds.length===0||scn.activeFleetIds.includes(fid))&&fid===f.id;});})||fleets[setIdx]||fleets[0];
-    if(available)setFleetForPhysicalSet(setIdx,available.id);
+    var fallback=(fleets[setIdx]||fleets[0]);
+    if(fallback)setFleetForPhysicalSet(setIdx,fallback.id);
   };
   const getYearLabel=(label)=>{const m=String(label||'').match(/(20\d{2})/);return m?m[1]:String(label||'').split(/[\/\-]/)[0]||String(label||'')};
   const rollupResultRows=(rows)=>{if(chartRollup!=="year")return rows.map(function(r){return Object.assign({},r,{Ore:(r.pd?.oreMined||0)*scn.unitMul,Waste:(r.pd?.wasteMined||0)*scn.unitMul,RampBuild:(r.pd?.totalRampMined||0)*scn.unitMul,Fe:r.pd?.oreFePct||0,Si:r.pd?.oreSiPct||0,Al:r.pd?.oreAlPct||0,P:r.pd?.orePPct||0,TruckCapex:r.res?.trkCapex||0,DiggerCapex:r.res?.digCapex||0,TruckOpex:r.res?.totTrkExc||0,DiggerOpex:r.res?.digOpxTotal||0,RehandleOpex:r.res?.digRehandle||0,ChargerCapex:r.res?.chgCapex||0,BatteryCapex:r.res?.totReplBatCost||0,TruckCPT:r.res?.trkPerT||0,DiggerCPT:r.res?.digOpxPerT||0,Trucks:r.res?.trkReqR||0,Diggers:r.res?.digFleet||0,Chargers:r.res?.chgStaRnd||0})}); const m={}; rows.forEach(function(r){var y=getYearLabel(r.periodLabel); if(!m[y])m[y]={periodLabel:y,Ore:0,Waste:0,RampBuild:0,oreWt:0,Fe:0,Si:0,Al:0,P:0,TruckCapex:0,DiggerCapex:0,TruckOpex:0,DiggerOpex:0,RehandleOpex:0,ChargerCapex:0,BatteryCapex:0,TruckCPT:0,DiggerCPT:0,Trucks:0,Diggers:0,Chargers:0,Diesel:0,Maint:0,Parts:0,GET:0,Operator:0,Other:0}; var t=m[y]; var ore=(r.pd?.oreMined||0)*scn.unitMul; t.Ore+=ore; t.Waste+=(r.pd?.wasteMined||0)*scn.unitMul; t.RampBuild+=(r.pd?.totalRampMined||0)*scn.unitMul; t.oreWt+=ore; t.Fe+=ore*((r.pd?.oreFePct)||0); t.Si+=ore*((r.pd?.oreSiPct)||0); t.Al+=ore*((r.pd?.oreAlPct)||0); t.P+=ore*((r.pd?.orePPct)||0); t.TruckCapex+=r.res?.trkCapex||0; t.DiggerCapex+=r.res?.digCapex||0; t.TruckOpex+=r.res?.totTrkExc||0; t.DiggerOpex+=r.res?.digOpxTotal||0; t.RehandleOpex+=r.res?.digRehandle||0; t.ChargerCapex+=r.res?.chgCapex||0; t.BatteryCapex+=r.res?.totReplBatCost||0; t.TruckCPT+=r.res?.trkPerT||0; t.DiggerCPT+=r.res?.digOpxPerT||0; t.Trucks=Math.max(t.Trucks,r.res?.trkReqR||0); t.Diggers=Math.max(t.Diggers,r.res?.digFleet||0); t.Chargers=Math.max(t.Chargers,r.res?.chgStaRnd||0);}); return Object.values(m).map(function(t){var c=t.oreWt||1; return Object.assign(t,{Fe:t.Fe/c,Si:t.Si/c,Al:t.Al/c,P:t.P/c});});};
@@ -487,7 +483,7 @@ export default function App(){
               })}</tbody>
             </table>
           </div>
-          {scn.activeFleetIds.length===0&&<p style={{color:P.txD,fontSize:11,marginTop:6}}>All fleets active by default. Uncheck to exclude specific fleets.</p>}
+
         </div>)}
 
         {/* ══ SCHEDULE (for active scenario) ══ */}
@@ -700,12 +696,11 @@ export default function App(){
           <p style={{color:P.txM,fontSize:13,marginBottom:16}}>Side-by-side comparison of key metrics across all scenarios.</p>
           {(()=>{
             const scnTots=scenarios.map(function(s){
-              var aFl=fleets.filter(function(f){return s.activeFleetIds.length===0||s.activeFleetIds.includes(f.id)});
+              var assignments=getScenarioAssignments(s);
               var np2=s.csvData?s.csvData.np:s.manualData.length;
               var t={mined:0,cost:0,costExc:0,trkCapex:0,digCapex:0,chgCapex:0,trucks:0,diggers:0,chargers:0};
-              for(var pi=0;pi<np2;pi++){for(var fi2=0;fi2<aFl.length;fi2++){var fleet=aFl[fi2];
-                var psIdx2=s.fleetPhysicalSets[fleet.id]||0;
-                var mapping=s.fieldMappings[psIdx2]||s.fieldMappings[0];
+              for(var pi=0;pi<np2;pi++){for(var fi2=0;fi2<assignments.length;fi2++){var row=assignments[fi2]; var fleet=row.fleet;
+                var mapping=row.mapping||s.fieldMappings[0];
                 var pd2=null;
                 if(s.csvData&&mapping){pd2={days:s.csvData.gv("Days",pi)||91};pd2.hours=s.csvData.gv("Hours",pi)||pd2.days*24;for(var pfi=0;pfi<PHYS_FIELDS.length;pfi++){var pf=PHYS_FIELDS[pfi];pd2[pf.key]=mapping.fields[pf.key]?s.csvData.gv(mapping.fields[pf.key],pi):0}}
                 else{pd2=s.manualData[pi]}
@@ -881,11 +876,11 @@ export default function App(){
           <ST icon="📈">Scenario Comparison Charts</ST>
           {(function(){
             var scnData=scenarios.map(function(s){
-              var aFl=fleets.filter(function(f){return s.activeFleetIds.length===0||s.activeFleetIds.includes(f.id)});
+              var assignments=getScenarioAssignments(s);
               var np2=s.csvData?s.csvData.np:s.manualData.length;
               var t={name:s.name,mined:0,cost:0,costExc:0,trkCapex:0,digCapex:0,chgCapex:0,trucks:0,diggers:0,chargers:0};
-              for(var pi=0;pi<np2;pi++){for(var fi2=0;fi2<aFl.length;fi2++){var fleet=aFl[fi2];
-                var psIdx2=s.fleetPhysicalSets[fleet.id]||0;var mapping=s.fieldMappings[psIdx2]||s.fieldMappings[0];var pd2=null;
+              for(var pi=0;pi<np2;pi++){for(var fi2=0;fi2<assignments.length;fi2++){var row=assignments[fi2]; var fleet=row.fleet;
+                var mapping=row.mapping||s.fieldMappings[0];var pd2=null;
                 if(s.csvData&&mapping){pd2={days:s.csvData.gv("Days",pi)||91};pd2.hours=s.csvData.gv("Hours",pi)||pd2.days*24;for(var pfi=0;pfi<PHYS_FIELDS.length;pfi++){var pf=PHYS_FIELDS[pfi];pd2[pf.key]=mapping.fields[pf.key]?s.csvData.gv(mapping.fields[pf.key],pi):0}}
                 else{pd2=s.manualData[pi]}
                 if(!pd2)continue;var ti2=Math.min(fleet.truckIdx,trucks.length-1),di2=Math.min(fleet.diggerIdx,diggers.length-1);
@@ -927,11 +922,12 @@ export default function App(){
           <ST icon="⛏️">Mining Physicals by Scenario</ST>
           {scenarios.map(function(s,si){
             var np3=s.csvData?s.csvData.np:s.manualData.length;
-            var aFl2=fleets.filter(function(f){return s.activeFleetIds.length===0||s.activeFleetIds.includes(f.id)});
-            var fleet3=aFl2[0];if(!fleet3)return null;
+            var assignments2=getScenarioAssignments(s);
+            var firstAssignment=assignments2[0];if(!firstAssignment)return null;
+            var fleet3=firstAssignment.fleet;
             var physData3=[];
             for(var pi3=0;pi3<np3;pi3++){
-              var psIdx3=s.fleetPhysicalSets[fleet3.id]||0;var mapping3=s.fieldMappings[psIdx3]||s.fieldMappings[0];var pd4=null;
+              var mapping3=firstAssignment.mapping||s.fieldMappings[0];var pd4=null;
               if(s.csvData&&mapping3){pd4={periodLabel:s.csvData.gs("Period",pi3)||("P"+(pi3+1))};for(var pfi2=0;pfi2<PHYS_FIELDS.length;pfi2++){var pf2=PHYS_FIELDS[pfi2];pd4[pf2.key]=mapping3.fields[pf2.key]?s.csvData.gv(mapping3.fields[pf2.key],pi3):0}}
               else if(s.manualData[pi3]){pd4=s.manualData[pi3];pd4.periodLabel=pd4.periodLabel||("P"+(pi3+1))}
               if(!pd4)continue;

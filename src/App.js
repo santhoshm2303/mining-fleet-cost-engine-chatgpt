@@ -16,6 +16,23 @@ const mkDigger4 = () => mkDigger({ diggerName:"400t Cable Electric Backhoe", eff
 const defaultOther = () => ({ moistureContent:0.052, exchangeRate:0.70, discountRate:0.115, electricityCost:0.1443, dieselCost:0.9102, allInFitterPerYear:182, mannedOperator:133, calendarTime:8760, diggerFleetRoundingThreshold:0.5 });
 
 // ─── HELPERS ───────────────────────────────────────────────────────────
+const FLEET_CONFIGS_KEY = "mfce_saved_fleet_configs_v1";
+function loadFleetConfigs(){
+  if(typeof window === "undefined") return [];
+  try{
+    const raw = window.localStorage.getItem(FLEET_CONFIGS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  }catch(e){
+    return [];
+  }
+}
+function saveFleetConfigs(configs){
+  if(typeof window === "undefined") return;
+  try{
+    window.localStorage.setItem(FLEET_CONFIGS_KEY, JSON.stringify(Array.isArray(configs) ? configs : []));
+  }catch(e){}
+}
 const fmt = (v,d=2) => { if(v===""||v==null||isNaN(v)) return "—"; return Number(v).toLocaleString("en-AU",{minimumFractionDigits:d,maximumFractionDigits:d}); };
 const fmtInt = v => fmt(v,0);
 const fmtC2 = v => { if(v===""||v==null||isNaN(v)) return "—"; return "$"+Number(v).toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2}); };

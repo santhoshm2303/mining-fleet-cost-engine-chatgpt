@@ -352,6 +352,29 @@ export default function App(){
     return calcWithFormulas({totalMined:(pd.totalMined||0)*scn.unitMul,oreMined:(pd.oreMined||0)*scn.unitMul,totalRampMined:(pd.totalRampMined||pd.totalMined||0)*scn.unitMul,avgLoadedTravelTime:pd.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd.avgUnloadedTravelTime||0,avgNetPower:pd.avgNetPower||0,avgTkphDelay:pd.avgTkphDelay||0,schedPeriod:scn.schedPeriod,calendarDays:pd.days||91,calendarHours:pd.hours||2184,truck:trucks[ti],digger:diggers[di],other:otherA,fleet:fleet},formulas);
   },[testPeriodIdx,testFleetIdx,scenarioAssignments,trucks,diggers,otherA,formulas,scn,getPdForSet]);
 
+  const getAssignedFleetIdForSet=useCallback((setIdx,scenario)=>{
+    var s=scenario||scn;
+    if(s.physicalSetFleetIds && s.physicalSetFleetIds[setIdx]!==undefined) return s.physicalSetFleetIds[setIdx] || "";
+    const explicit=fleets.find(function(f){
+      const ps=(s.fleetPhysicalSets[f.id]??-1);
+      const active=(s.activeFleetIds.length===0||s.activeFleetIds.includes(f.id));
+      return active&&ps===setIdx;
+    });
+    if(explicit)return explicit.id;
+    if(s.activeFleetIds.length===0&&fleets[setIdx])return fleets[setIdx].id;
+    return "";
+  },[scn,fleets]);
+
+  const getScenarioAssignments=useCallback((scenario)=>{
+    var s=scenario||scn;
+    var maps=(s.fieldMappings&&s.fieldMappings.length?s.fieldMappings:[{name:"Base Set",fields:{}}]);
+    return maps.map(function(mapping,mi){
+      var fleetId=getAssignedFleetIdForSet(mi,s);
+      var fleet=fleets.find(function(f){return f.id===fleetId;})||null;
+      return {setIdx:mi,mapping:mapping,fleetId:fleetId,fleet:fleet};
+    }).filter(function(row){return !!row.fleetId && !!row.fleet;});
+  },[scn,fleets,getAssignedFleetIdForSet]);
+
   const updT=(i,f,v)=>setTrucks(p=>{const n=[...p];n[i]={...n[i],[f]:v};return n});
   const updD=(i,f,v)=>setDiggers(p=>{const n=[...p];n[i]={...n[i],[f]:v};return n});
   const uO=(k,v)=>setOtherA(p=>({...p,[k]:v}));
@@ -380,27 +403,6 @@ export default function App(){
   const addManP=()=>updScn(s=>({...s,manualData:[...s.manualData,{period:s.manualData.length+1,periodLabel:`P${s.manualData.length+1}`,days:91,hours:2184,oreMined:0,wasteMined:0,totalMined:0,totalRampMined:0,avgLoadedTravelTime:10,avgUnloadedTravelTime:8,avgTkphDelay:0,avgNetPower:150,oreFePct:0,oreSiPct:0,oreAlPct:0,orePPct:0}]}));
   const updManP=(i,k,v)=>updScn(s=>{const d=[...s.manualData];d[i]={...d[i],[k]:v};if(k==="oreMined"||k==="wasteMined"){d[i].totalMined=(d[i].oreMined||0)+(d[i].wasteMined||0);d[i].totalRampMined=d[i].totalMined}if(k==="days")d[i].hours=v*24;return{...s,manualData:d}});
   const toggleFleetInScn=(fid)=>updScn(s=>{const ids=s.activeFleetIds.includes(fid)?s.activeFleetIds.filter(x=>x!==fid):[...s.activeFleetIds,fid];return{...s,activeFleetIds:ids}});
-  const getAssignedFleetIdForSet=(setIdx,scenario)=>{
-    var s=scenario||scn;
-    if(s.physicalSetFleetIds && s.physicalSetFleetIds[setIdx]!==undefined) return s.physicalSetFleetIds[setIdx] || "";
-    const explicit=fleets.find(function(f){
-      const ps=(s.fleetPhysicalSets[f.id]??-1);
-      const active=(s.activeFleetIds.length===0||s.activeFleetIds.includes(f.id));
-      return active&&ps===setIdx;
-    });
-    if(explicit)return explicit.id;
-    if(s.activeFleetIds.length===0&&fleets[setIdx])return fleets[setIdx].id;
-    return "";
-  };
-  const getScenarioAssignments=(scenario)=>{
-    var s=scenario||scn;
-    var maps=(s.fieldMappings&&s.fieldMappings.length?s.fieldMappings:[{name:"Base Set",fields:{}}]);
-    return maps.map(function(mapping,mi){
-      var fleetId=getAssignedFleetIdForSet(mi,s);
-      var fleet=fleets.find(function(f){return f.id===fleetId;})||null;
-      return {setIdx:mi,mapping:mapping,fleetId:fleetId,fleet:fleet};
-    }).filter(function(row){return !!row.fleetId && !!row.fleet;});
-  };
   const setFleetForPhysicalSet=(setIdx,fleetId)=>updScn(function(s){
     var psf=Object.assign({},s.physicalSetFleetIds||{});
     if(fleetId) psf[setIdx]=fleetId; else delete psf[setIdx];

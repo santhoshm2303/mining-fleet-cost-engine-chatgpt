@@ -334,6 +334,50 @@ export default function App(){
   const addManP=()=>updScn(s=>({...s,manualData:[...s.manualData,{period:s.manualData.length+1,periodLabel:`P${s.manualData.length+1}`,days:91,hours:2184,oreMined:0,wasteMined:0,totalMined:0,totalRampMined:0,avgLoadedTravelTime:10,avgUnloadedTravelTime:8,avgTkphDelay:0,avgNetPower:150,oreFePct:0,oreSiPct:0,oreAlPct:0,orePPct:0}]}));
   const updManP=(i,k,v)=>updScn(s=>{const d=[...s.manualData];d[i]={...d[i],[k]:v};if(k==="oreMined"||k==="wasteMined"){d[i].totalMined=(d[i].oreMined||0)+(d[i].wasteMined||0);d[i].totalRampMined=d[i].totalMined}if(k==="days")d[i].hours=v*24;return{...s,manualData:d}});
   const toggleFleetInScn=(fid)=>updScn(s=>{const ids=s.activeFleetIds.includes(fid)?s.activeFleetIds.filter(x=>x!==fid):[...s.activeFleetIds,fid];return{...s,activeFleetIds:ids}});
+  const getAssignedFleetIdForSet=(setIdx)=>{
+    const explicit=fleets.find(function(f){
+      const ps=(scn.fleetPhysicalSets[f.id]??-1);
+      const active=(scn.activeFleetIds.length===0||scn.activeFleetIds.includes(f.id));
+      return active&&ps===setIdx;
+    });
+    if(explicit)return explicit.id;
+    if(scn.activeFleetIds.length===0&&fleets[setIdx])return fleets[setIdx].id;
+    return "";
+  };
+  const setFleetForPhysicalSet=(setIdx,fleetId)=>updScn(function(s){
+    var fps=Object.assign({},s.fleetPhysicalSets||{});
+    var ids=s.activeFleetIds.length===0?fleets.map(function(f){return f.id}):[].concat(s.activeFleetIds);
+    var prevAssigned="";
+    fleets.forEach(function(f){
+      var active=(s.activeFleetIds.length===0||ids.includes(f.id));
+      if(active&&(fps[f.id]??-1)===setIdx)prevAssigned=f.id;
+    });
+    if(prevAssigned&&prevAssigned!==fleetId){
+      delete fps[prevAssigned];
+      ids=ids.filter(function(id){return id!==prevAssigned});
+    }
+    if(fleetId){
+      if(!ids.includes(fleetId))ids.push(fleetId);
+      fps[fleetId]=setIdx;
+    }
+    return {...s,activeFleetIds:ids,fleetPhysicalSets:fps};
+  });
+  const togglePhysicalSetActive=(setIdx)=>{
+    const assignedId=getAssignedFleetIdForSet(setIdx);
+    if(assignedId){
+      updScn(function(s){
+        var fps=Object.assign({},s.fleetPhysicalSets||{});
+        delete fps[assignedId];
+        var ids=(s.activeFleetIds.length===0?fleets.map(function(f){return f.id}):[].concat(s.activeFleetIds)).filter(function(id){return id!==assignedId});
+        return {...s,activeFleetIds:ids,fleetPhysicalSets:fps};
+      });
+      return;
+    }
+    var used={};
+    fleets.forEach(function(f){var sid=getAssignedFleetIdForSet(setIdx); if(sid)used[sid]=true;});
+    var available=fleets.find(function(f){return !Object.keys(scn.fleetPhysicalSets||{}).some(function(fid){return (scn.activeFleetIds.length===0||scn.activeFleetIds.includes(fid))&&fid===f.id;});})||fleets[setIdx]||fleets[0];
+    if(available)setFleetForPhysicalSet(setIdx,available.id);
+  };
   const getYearLabel=(label)=>{const m=String(label||'').match(/(20\d{2})/);return m?m[1]:String(label||'').split(/[\/\-]/)[0]||String(label||'')};
   const rollupResultRows=(rows)=>{if(chartRollup!=="year")return rows.map(function(r){return Object.assign({},r,{Ore:(r.pd?.oreMined||0)*scn.unitMul,Waste:(r.pd?.wasteMined||0)*scn.unitMul,RampBuild:(r.pd?.totalRampMined||0)*scn.unitMul,Fe:r.pd?.oreFePct||0,Si:r.pd?.oreSiPct||0,Al:r.pd?.oreAlPct||0,P:r.pd?.orePPct||0,TruckCapex:r.res?.trkCapex||0,DiggerCapex:r.res?.digCapex||0,TruckOpex:r.res?.totTrkExc||0,DiggerOpex:r.res?.digOpxTotal||0,RehandleOpex:r.res?.digRehandle||0,ChargerCapex:r.res?.chgCapex||0,BatteryCapex:r.res?.totReplBatCost||0,TruckCPT:r.res?.trkPerT||0,DiggerCPT:r.res?.digOpxPerT||0,Trucks:r.res?.trkReqR||0,Diggers:r.res?.digFleet||0,Chargers:r.res?.chgStaRnd||0})}); const m={}; rows.forEach(function(r){var y=getYearLabel(r.periodLabel); if(!m[y])m[y]={periodLabel:y,Ore:0,Waste:0,RampBuild:0,oreWt:0,Fe:0,Si:0,Al:0,P:0,TruckCapex:0,DiggerCapex:0,TruckOpex:0,DiggerOpex:0,RehandleOpex:0,ChargerCapex:0,BatteryCapex:0,TruckCPT:0,DiggerCPT:0,Trucks:0,Diggers:0,Chargers:0,Diesel:0,Maint:0,Parts:0,GET:0,Operator:0,Other:0}; var t=m[y]; var ore=(r.pd?.oreMined||0)*scn.unitMul; t.Ore+=ore; t.Waste+=(r.pd?.wasteMined||0)*scn.unitMul; t.RampBuild+=(r.pd?.totalRampMined||0)*scn.unitMul; t.oreWt+=ore; t.Fe+=ore*((r.pd?.oreFePct)||0); t.Si+=ore*((r.pd?.oreSiPct)||0); t.Al+=ore*((r.pd?.oreAlPct)||0); t.P+=ore*((r.pd?.orePPct)||0); t.TruckCapex+=r.res?.trkCapex||0; t.DiggerCapex+=r.res?.digCapex||0; t.TruckOpex+=r.res?.totTrkExc||0; t.DiggerOpex+=r.res?.digOpxTotal||0; t.RehandleOpex+=r.res?.digRehandle||0; t.ChargerCapex+=r.res?.chgCapex||0; t.BatteryCapex+=r.res?.totReplBatCost||0; t.TruckCPT+=r.res?.trkPerT||0; t.DiggerCPT+=r.res?.digOpxPerT||0; t.Trucks=Math.max(t.Trucks,r.res?.trkReqR||0); t.Diggers=Math.max(t.Diggers,r.res?.digFleet||0); t.Chargers=Math.max(t.Chargers,r.res?.chgStaRnd||0);}); return Object.values(m).map(function(t){var c=t.oreWt||1; return Object.assign(t,{Fe:t.Fe/c,Si:t.Si/c,Al:t.Al/c,P:t.P/c});});};
 
@@ -409,7 +453,7 @@ export default function App(){
 
           {/* Fleet Configuration for Active Scenario */}
           <ST icon="🏗️">Fleet Configuration — {scn.name}</ST>
-          <p style={{color:P.txM,fontSize:13,marginBottom:12}}>Select which fleets are active in this scenario and assign a physical set to each fleet.</p>
+          <p style={{color:P.txM,fontSize:13,marginBottom:12}}>Each physical set gets its own line. Assign a fleet combo to each physical set for this scenario.</p>
 
           <div style={{...cardS,overflowX:"auto"}}>
             <table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
@@ -420,24 +464,25 @@ export default function App(){
                 <th style={{...thS,minWidth:150}}>Truck</th>
                 <th style={{...thS,minWidth:150}}>Digger</th>
               </tr></thead>
-              <tbody>{fleets.map((fl,fi)=>{
-                const isActive=scn.activeFleetIds.length===0||scn.activeFleetIds.includes(fl.id);
-                const psIdx=scn.fleetPhysicalSets[fl.id]||0;
-                const trk=trucks[Math.min(fl.truckIdx,trucks.length-1)];
-                const dig=diggers[Math.min(fl.diggerIdx,diggers.length-1)];
-                return(<tr key={fl.id} style={{borderBottom:`1px solid ${P.bd}`,background:isActive?"transparent":P.input+"88",opacity:isActive?1:0.5}}>
+              <tbody>{scn.fieldMappings.map((mapping,mi)=>{
+                const assignedFleetId=getAssignedFleetIdForSet(mi);
+                const fl=fleets.find(f=>f.id===assignedFleetId);
+                const isActive=!!assignedFleetId;
+                const trk=fl?trucks[Math.min(fl.truckIdx,trucks.length-1)]:null;
+                const dig=fl?diggers[Math.min(fl.diggerIdx,diggers.length-1)]:null;
+                return(<tr key={mapping.id||mi} style={{borderBottom:`1px solid ${P.bd}`,background:isActive?"transparent":P.input+"88",opacity:isActive?1:0.8}}>
                   <td style={{padding:"8px 12px",textAlign:"center"}}>
-                    <input type="checkbox" checked={isActive} onChange={()=>toggleFleetInScn(fl.id)} style={{width:18,height:18,cursor:"pointer"}}/>
+                    <input type="checkbox" checked={isActive} onChange={()=>togglePhysicalSetActive(mi)} style={{width:18,height:18,cursor:"pointer"}}/>
                   </td>
+                  <td style={{padding:"6px 10px",color:isActive?mClr[mi%mClr.length]:P.txD,fontWeight:600}}>{mapping.name}</td>
                   <td style={{padding:"6px 10px"}}>
-                    <select value={psIdx} onChange={e=>setScenarios(prev=>{const n=[...prev];const fps=Object.assign({},n[activeScnIdx].fleetPhysicalSets);fps[fl.id]=parseInt(e.target.value);n[activeScnIdx]=Object.assign({},n[activeScnIdx],{fleetPhysicalSets:fps});return n})} disabled={!isActive}
-                      style={{...selS,width:"100%",color:isActive?mClr[psIdx%mClr.length]:P.txD,fontWeight:600}}>
-                      {scn.fieldMappings.map((m,mi)=><option key={mi} value={mi}>{m.name}</option>)}
+                    <select value={assignedFleetId} onChange={e=>setFleetForPhysicalSet(mi,e.target.value)} style={{...selS,width:"100%",color:isActive?mClr[mi%mClr.length]:P.txD,fontWeight:700}}>
+                      <option value="">Select Fleet</option>
+                      {fleets.map(function(opt){return <option key={opt.id} value={opt.id}>{opt.name}</option>})}
                     </select>
                   </td>
-                  <td style={{padding:"6px 10px"}}><select value={fl.id} style={{...selS,width:"100%",color:mClr[fi%mClr.length],fontWeight:700}}>{fleets.map(function(opt){return <option key={opt.id} value={opt.id}>{opt.name}</option>})}</select></td>
-                  <td style={{padding:"8px 12px",color:P.txM,fontSize:12}}>{trk?.truckName}</td>
-                  <td style={{padding:"8px 12px",color:P.txM,fontSize:12}}>{dig?.diggerName}</td>
+                  <td style={{padding:"8px 12px",color:P.txM,fontSize:12}}>{trk?.truckName||"—"}</td>
+                  <td style={{padding:"8px 12px",color:P.txM,fontSize:12}}>{dig?.diggerName||"—"}</td>
                 </tr>);
               })}</tbody>
             </table>

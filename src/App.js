@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, LabelList } from "recharts";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 /* ═══════════════════════════════════════════════════════════════════════
    MINING FLEET COST ENGINE v4
@@ -194,13 +194,13 @@ const ST=({children,icon})=>(<div style={{display:"flex",alignItems:"center",gap
 const ChartToggles=({series,hidden,onToggle})=>(<div style={{display:"flex",gap:6,flexWrap:"wrap",padding:"8px 16px 4px"}}>{series.map(function(s){var vis=!hidden[s.key];return(<button key={s.key} onClick={function(){onToggle(s.key)}} style={{padding:"3px 10px",borderRadius:12,border:"1.5px solid "+(vis?s.color:P.bd),background:vis?s.color+"18":"transparent",color:vis?s.color:P.txD,fontFamily:ff,fontSize:10,fontWeight:600,cursor:"pointer",opacity:vis?1:0.4}}>{vis?"●":"○"} {s.label}</button>)})}</div>);
 const Btn=({children,onClick,color=P.pri,small,solid})=>(<button onClick={onClick} style={{padding:small?"5px 12px":"8px 20px",background:solid?color:"transparent",border:`1.5px solid ${color}`,borderRadius:7,color:solid?"#fff":color,fontFamily:ff,fontSize:12,cursor:"pointer",fontWeight:600}}>{children}</button>);
 const cardS={background:P.card,borderRadius:10,border:`1px solid ${P.bd}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"};
-const SavePanel=({title,kind,nameValue,onNameChange,items,onSave,onLoad,onDelete})=>(<div style={{...cardS,padding:16,marginBottom:16}}><div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}><div><div style={{fontWeight:700,color:P.pri,fontSize:13}}>{title}</div><div style={{fontSize:11,color:P.txD,marginTop:2}}>Save and reload named configurations in this browser.</div></div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><input value={nameValue} onChange={function(e){onNameChange(e.target.value)}} placeholder="Configuration name" style={{padding:"7px 10px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:ff,fontSize:12,minWidth:220}}/><Btn onClick={onSave} solid small>Save</Btn></div></div>{items&&items.length>0&&<div style={{display:"grid",gap:8,marginTop:14}}>{items.map(function(item){return(<div key={item.id} style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",padding:"8px 10px",border:`1px solid ${P.bd}`,borderRadius:8,background:P.secBg,flexWrap:"wrap"}}><div><div style={{fontWeight:600,fontSize:12,color:P.tx}}>{item.name}</div><div style={{fontSize:10,color:P.txD}}>{new Date(item.timestamp||Date.now()).toLocaleString("en-AU")}</div></div><div style={{display:"flex",gap:8}}><Btn onClick={function(){onLoad(item.id)}} small>Load</Btn><Btn onClick={function(){onDelete(item.id)}} small color={P.rd}>Delete</Btn></div></div>)})}</div>}</div>);
 const selS={padding:"6px 12px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:ff,fontSize:12};
 const thS={padding:"9px 10px",color:P.txM,textAlign:"left",fontSize:11,fontWeight:600};
 
-const CompRow=({label,field,models,onChange,unit,type="number",step,section})=>{
-  if(section)return(<tr><td colSpan={models.length+2} style={{padding:"16px 14px 6px",color:P.pri,fontWeight:700,fontSize:13,borderBottom:`2px solid ${P.pri}20`,fontFamily:ff,background:P.secBg}}>{label}</td></tr>);
-  return(<tr style={{borderBottom:`1px solid ${P.bd}`}}><td style={{padding:"7px 14px",color:P.txM,fontSize:13,fontFamily:ff,whiteSpace:"nowrap",position:"sticky",left:0,background:P.card,zIndex:1}}>{label}</td><td style={{padding:"7px 8px",color:P.txD,fontSize:11,fontFamily:mf}}>{unit}</td>{models.map((m,i)=>(<td key={m.id||i} style={{padding:"3px 6px"}}>{type==="text"?<input type="text" value={m[field]||""} onChange={e=>onChange(i,field,e.target.value)} style={{width:"100%",minWidth:115,padding:"6px 10px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:ff,fontSize:13}}/>:<input type="number" value={m[field]??""} onChange={e=>onChange(i,field,parseFloat(e.target.value)||0)} step={step||0.01} style={{width:"100%",minWidth:105,padding:"6px 10px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:mf,fontSize:13,textAlign:"right"}}/>}</td>))}</tr>);
+const CompRow=({label,field,models,onChange,unit,type="number",step,section,keyPrefix=""})=>{
+  if(section)return(<tr><td colSpan={models.length+3} style={{padding:"16px 14px 6px",color:P.pri,fontWeight:700,fontSize:13,borderBottom:`2px solid ${P.pri}20`,fontFamily:ff,background:P.secBg}}>{label}</td></tr>);
+  const dispKey=keyPrefix?`${keyPrefix}${field}`:field;
+  return(<tr style={{borderBottom:`1px solid ${P.bd}`}}><td style={{padding:"7px 14px",color:P.txM,fontSize:13,fontFamily:ff,whiteSpace:"nowrap",position:"sticky",left:0,background:P.card,zIndex:1}}>{label}</td><td style={{padding:"7px 10px",color:P.txD,fontSize:11,fontFamily:mf,whiteSpace:"nowrap"}}>{dispKey}</td><td style={{padding:"7px 8px",color:P.txD,fontSize:11,fontFamily:mf}}>{unit}</td>{models.map((m,i)=>(<td key={m.id||i} style={{padding:"3px 6px"}}>{type==="text"?<input type="text" value={m[field]||""} onChange={e=>onChange(i,field,e.target.value)} style={{width:"100%",minWidth:115,padding:"6px 10px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:ff,fontSize:13}}/>:<input type="number" value={m[field]??""} onChange={e=>onChange(i,field,parseFloat(e.target.value)||0)} step={step||0.01} style={{width:"100%",minWidth:105,padding:"6px 10px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:mf,fontSize:13,textAlign:"right"}}/>}</td>))}</tr>);
 };
 
 const truckRows=[{section:true,label:"Identity & TUM"},{field:"truckName",label:"Truck Name",type:"text"},{field:"payload",label:"Payload",unit:"t"},{field:"powerSource",label:"Power Source",type:"text"},{field:"availability",label:"Availability",unit:"%",step:0.01},{field:"useOfAvailability",label:"Use of Availability",unit:"%",step:0.01},{field:"operatingEfficiency",label:"Operating Efficiency",unit:"%",step:0.01},{field:"utToSmuConversion",label:"UT → SMU",unit:"#"},{field:"performanceEfficiency",label:"Perf Efficiency",unit:"%",step:0.01},{section:true,label:"Spot / Queue / Dump Times"},{field:"spotTimeLoad",label:"Spot Time at Load",unit:"min"},{field:"queueTimeLoad",label:"Queue Time at Load",unit:"min"},{field:"spotTimeDump",label:"Spot Time at Dump",unit:"min"},{field:"queueTimeDump",label:"Queue Time at Dump",unit:"min"},{field:"dumpTime",label:"Dump Time",unit:"min"},{section:true,label:"Capital Expenditure"},{field:"totalTruckCapex",label:"Total Capex",unit:"AUD",step:1000},{field:"capexPerSmuHour",label:"Capex/SMU Hr",unit:"$/SMU"},{field:"powerSystemCost",label:"Power System",unit:"AUD",step:1000},{section:true,label:"Operating Expenditure"},{field:"opexPerSmuHour",label:"Opex/SMU Hr",unit:"$/hr"},{field:"operatorRate",label:"Operator Rate",unit:"$/SMU"},{section:true,label:"Charging"},{field:"nominalBatteryCapacityNew",label:"Nom Battery Cap",unit:"kWh"},{field:"averageBatteryUsableCapacity",label:"Avg Usable Cap",unit:"kWh"},{field:"travelToRechargeEnergy",label:"Travel Rchg Energy",unit:"kWh"},{field:"travelToSwapChargerStationTime",label:"Travel to Charger",unit:"min"},{field:"chargerQueueTime",label:"Queue Time",unit:"min"},{field:"chargerConnectionPositioningTime",label:"Connection Time",unit:"min"},{field:"equivalentFullLifeCycles",label:"Equiv Life Cycles",unit:"#"},{field:"chargingTime",label:"Charging Time",unit:"min"},{field:"rechargeRateC",label:"Recharge Rate",unit:"C"},{section:true,label:"Charger Infrastructure"},{field:"chargerOperatingTime",label:"Charger Op Time",unit:"hrs"},{field:"demandResponseAllowance",label:"Demand Resp %",unit:"%",step:0.01},{field:"numBatteriesPerStation",label:"Batteries/Station",unit:"#"},{field:"totalChargerCapex",label:"Charger Capex",unit:"AUD",step:1000},{field:"avgChargerEffectiveHours",label:"Avg Charger Eff Hrs",unit:"hrs"},{field:"totalChargerOandO",label:"Charger O&O",unit:"$/SMU"}];
@@ -230,72 +230,6 @@ export default function App(){
   const togSeries=(k)=>setHiddenSeries(function(p){var n=Object.assign({},p);n[k]=!n[k];return n});
   const isVis=(k)=>!hiddenSeries[k];
   const fileRef=useRef();
-  const [saveNames,setSaveNames]=useState({scenario:"",setup:"",assumptions:"",fieldMapping:"",formulas:""});
-  const [savedBundles,setSavedBundles]=useState({scenario:[],setup:[],assumptions:[],fieldMapping:[],formulas:[]});
-
-  useEffect(function(){
-    try{
-      setSavedBundles({
-        scenario: JSON.parse(localStorage.getItem("mfc_saved_scenarios")||"[]"),
-        setup: JSON.parse(localStorage.getItem("mfc_saved_setup")||"[]"),
-        assumptions: JSON.parse(localStorage.getItem("mfc_saved_assumptions")||"[]"),
-        fieldMapping: JSON.parse(localStorage.getItem("mfc_saved_field_mappings")||"[]"),
-        formulas: JSON.parse(localStorage.getItem("mfc_saved_formulas")||"[]")
-      });
-    }catch(err){ console.error(err); }
-  },[]);
-
-  const persistBundle=function(kind,list){
-    setSavedBundles(function(prev){ return Object.assign({},prev,{[kind]:list}); });
-    try{
-      var storageKey=kind==="scenario"?"mfc_saved_scenarios":kind==="setup"?"mfc_saved_setup":kind==="assumptions"?"mfc_saved_assumptions":kind==="fieldMapping"?"mfc_saved_field_mappings":"mfc_saved_formulas";
-      localStorage.setItem(storageKey, JSON.stringify(list));
-    }catch(err){ console.error(err); }
-  };
-  const saveBundle=function(kind){
-    var raw=(saveNames[kind]||"").trim();
-    var baseName=kind==="scenario"?scn.name:kind==="setup"?"Setup":kind==="assumptions"?"Assumptions":kind==="fieldMapping"?((scn&&scn.name?scn.name:"Scenario")+" Field Mapping"):"Formulas";
-    var name=raw||(baseName+" "+new Date().toLocaleDateString("en-AU"));
-    var payload=kind==="scenario"
-      ? {scenarios:JSON.parse(JSON.stringify(scenarios)),activeScnIdx,fieldMappings:JSON.parse(JSON.stringify((scenarios[activeScnIdx]||{}).fieldMappings||[]))}
-      : kind==="setup"
-      ? {formulas:JSON.parse(JSON.stringify(formulas)),fleets:JSON.parse(JSON.stringify(fleets))}
-      : kind==="assumptions"
-      ? {otherA:JSON.parse(JSON.stringify(otherA)),trucks:JSON.parse(JSON.stringify(trucks)),diggers:JSON.parse(JSON.stringify(diggers))}
-      : kind==="fieldMapping"
-      ? {fieldMappings:JSON.parse(JSON.stringify((scenarios[activeScnIdx]||{}).fieldMappings||[]))}
-      : {formulas:JSON.parse(JSON.stringify(formulas))};
-    var list=(savedBundles[kind]||[]).filter(function(x){ return x.name!==name; });
-    list.unshift({id:uid(),name,timestamp:Date.now(),data:payload});
-    persistBundle(kind,list);
-    setSaveNames(function(prev){ return Object.assign({},prev,{[kind]:name}); });
-  };
-  const loadBundle=function(kind,id){
-    var item=(savedBundles[kind]||[]).find(function(x){ return x.id===id; });
-    if(!item)return;
-    if(kind==="scenario"){
-      setScenarios(item.data.scenarios||[]);
-      setActiveScnIdx(Math.min(item.data.activeScnIdx||0, Math.max(0,(item.data.scenarios||[]).length-1)));
-    } else if(kind==="setup"){
-      setFormulas(item.data.formulas||[]);
-      setFleets(item.data.fleets||[]);
-    } else if(kind==="assumptions"){
-      setOtherA(item.data.otherA||defaultOther());
-      setTrucks(item.data.trucks||[]);
-      setDiggers(item.data.diggers||[]);
-    } else if(kind==="fieldMapping"){
-      setScenarios(function(prev){
-        var next=[...prev];
-        var cur=Object.assign({}, next[activeScnIdx]||mkScenario());
-        cur.fieldMappings=item.data.fieldMappings||[];
-        next[activeScnIdx]=cur;
-        return next;
-      });
-    } else if(kind==="formulas"){
-      setFormulas(item.data.formulas||[]);
-    }
-  };
-  const deleteBundle=function(kind,id){ persistBundle(kind,(savedBundles[kind]||[]).filter(function(x){ return x.id!==id; })); };
 
   const scn=scenarios[activeScnIdx]||scenarios[0];
   const updScn=(fn)=>setScenarios(prev=>{const n=[...prev];n[activeScnIdx]=fn({...n[activeScnIdx]});return n});
@@ -349,99 +283,6 @@ export default function App(){
   },[results]);
 
   const totals=useMemo(()=>{const t={m:0,c:0};results.forEach(r=>{if(!r.res)return;t.m+=(r.pd?.totalMined||0)*scn.unitMul;t.c+=r.res.totCost||0});t.cpt=t.m>0?t.c/t.m:0;return t},[results,scn.unitMul]);
-
-  const combinedPhysicals=useMemo(()=>{
-    const out=[];
-    for(let pi=0;pi<numPeriods;pi++){
-      const rows=[];
-      if(scn.csvData&&scn.fieldMappings&&scn.fieldMappings.length){
-        for(const mapping of scn.fieldMappings){
-          if(!mapping)continue;
-          const row={periodLabel:scn.csvData.gs("Period",pi)||`P${pi+1}`};
-          for(const pf of PHYS_FIELDS)row[pf.key]=mapping.fields[pf.key]?scn.csvData.gv(mapping.fields[pf.key],pi):0;
-          rows.push(row);
-        }
-      }else if(scn.manualData[pi]){
-        rows.push(scn.manualData[pi]);
-      }
-      if(!rows.length)continue;
-      let ore=0,waste=0,ramp=0,fe=0,si=0,al=0,pv=0;
-      for(const row of rows){
-        const oreRow=(row.oreMined||0)*scn.unitMul;
-        ore+=oreRow;
-        waste+=(row.wasteMined||0)*scn.unitMul;
-        ramp+=(row.totalRampMined||0)*scn.unitMul;
-        fe+=oreRow*(row.oreFePct||0);
-        si+=oreRow*(row.oreSiPct||0);
-        al+=oreRow*(row.oreAlPct||0);
-        pv+=oreRow*(row.orePPct||0);
-      }
-      out.push({period:rows[0].periodLabel||`P${pi+1}`,Ore:ore,Waste:waste,RampBuild:ramp,Fe:ore?fe/ore:0,Si:ore?si/ore:0,Al:ore?al/ore:0,P:ore?pv/ore:0});
-    }
-    return out;
-  },[numPeriods,scn]);
-
-  const combinedPeriodData=useMemo(()=>{
-    const map={};
-    for(const r of results){
-      if(!r.res)continue;
-      if(!map[r.pi])map[r.pi]={pi:r.pi,period:r.periodLabel,totalCost:0,totalRamp:0,totalMined:0,truckCost:0,truckOpex:0,diggerCost:0,rehandle:0,truckCapex:0,diggerCapex:0,chargerCapex:0,batteryCapex:0,Diesel:0,Maint:0,Parts:0,GET:0,Operator:0,Other:0};
-      const e=map[r.pi];
-      e.totalCost+=r.res.totCost||0;
-      e.totalRamp+=((r.pd?.totalRampMined||r.pd?.totalMined||0)*scn.unitMul);
-      e.totalMined+=((r.pd?.totalMined||0)*scn.unitMul);
-      e.truckCost+=r.res.totTrk||0;
-      e.truckOpex+=r.res.totTrkExc||0;
-      e.diggerCost+=r.res.digOpxTotal||0;
-      e.rehandle+=r.res.digRehandle||0;
-      e.truckCapex+=r.res.trkCapex||0;
-      e.diggerCapex+=r.res.digCapex||0;
-      e.chargerCapex+=r.res.chgCapex||0;
-      e.batteryCapex+=r.res.totReplBatCost||0;
-      e.Diesel+=r.res.digOpxDiesel||0;
-      e.Maint+=r.res.digOpxMaint||0;
-      e.Parts+=r.res.digOpxParts||0;
-      e.GET+=r.res.digOpxGET||0;
-      e.Operator+=r.res.digOpxOperator||0;
-      e.Other+=(r.res.digOpxOil||0)+(r.res.digOpxCable||0)+(r.res.digOpxTracks||0)+(r.res.digOpxTires||0)+(r.res.digOpxFMS||0)+(r.res.digOpxBattery||0)+(r.res.digOpxMaterials||0);
-    }
-    return Object.keys(map).map(k=>map[k]).sort((a,b)=>a.pi-b.pi).map(e=>({
-      period:e.period,
-      TotalCPT:e.totalRamp?e.totalCost/e.totalRamp:0,
-      TruckCPT:e.totalRamp?e.truckCost/e.totalRamp:0,
-      DiggerCPT:e.totalMined?e.diggerCost/e.totalMined:0,
-      TruckCapex:e.truckCapex,
-      DiggerCapex:e.diggerCapex,
-      ChargerCapex:e.chargerCapex,
-      BatteryCapex:e.batteryCapex,
-      TruckOpex:e.truckOpex,
-      DiggerOpex:e.diggerCost,
-      Rehandle:e.rehandle,
-      Diesel:e.Diesel,Maint:e.Maint,Parts:e.Parts,GET:e.GET,Operator:e.Operator,Other:e.Other
-    }));
-  },[results,scn.unitMul]);
-
-  const fleetChartData=useMemo(()=>{
-    return activeFleets.map(fleet=>({
-      fleet,
-      data:Array.from({length:numPeriods},(_,pi)=>{
-        const row=results.find(r=>r.pi===pi&&r.fleet.id===fleet.id);
-        const res=row?.res||{};
-        return {
-          period:row?.periodLabel||`P${pi+1}`,
-          Trucks:res.trkReqR||0,
-          Chargers:res.chgStaRnd||0,
-          Diggers:res.digFleet||0,
-          Diesel:res.digOpxDiesel||0,
-          Maint:res.digOpxMaint||0,
-          Parts:res.digOpxParts||0,
-          GET:res.digOpxGET||0,
-          Operator:res.digOpxOperator||0,
-          Other:(res.digOpxOil||0)+(res.digOpxCable||0)+(res.digOpxTracks||0)+(res.digOpxTires||0)+(res.digOpxFMS||0)+(res.digOpxBattery||0)+(res.digOpxMaterials||0)
-        };
-      })
-    }));
-  },[activeFleets,numPeriods,results]);
 
   const testResult=useMemo(()=>{
     const fleet=activeFleets[testFleetIdx]||activeFleets[0];if(!fleet)return null;
@@ -502,7 +343,7 @@ export default function App(){
       <div style={{padding:"20px 32px 60px",maxWidth:1600,margin:"0 auto"}}>
 
         {/* ══ SCENARIO MANAGER ══ */}
-        {page==="scenarios"&&(<div><SavePanel title="Scenario Manager Configurations" kind="scenario" nameValue={saveNames.scenario} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{scenario:v})})}} items={savedBundles.scenario} onSave={function(){saveBundle("scenario")}} onLoad={function(id){loadBundle("scenario",id)}} onDelete={function(id){deleteBundle("scenario",id)}}/>
+        {page==="scenarios"&&(<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <ST icon="📋">Scenario Manager</ST>
             <Btn onClick={()=>setScenarios(p=>[...p,mkScenario(`Scenario ${p.length+1}`)])} solid>+ New Scenario</Btn>
@@ -618,7 +459,7 @@ export default function App(){
         </div>)}
 
         {/* ══ FIELD MAPPING ══ */}
-        {page==="mapping"&&(<div><SavePanel title="Field Mapping Configurations" kind="fieldMapping" nameValue={saveNames.fieldMapping} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{fieldMapping:v})})}} items={savedBundles.fieldMapping} onSave={function(){saveBundle("fieldMapping")}} onLoad={function(id){loadBundle("fieldMapping",id)}} onDelete={function(id){deleteBundle("fieldMapping",id)}}/>
+        {page==="mapping"&&(<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <ST icon="🔗">Field Mapping — {scn.name}</ST>
             <Btn onClick={()=>updScn(s=>({...s,fieldMappings:[...s.fieldMappings,{id:uid(),name:`Set ${s.fieldMappings.length+1}`,fields:PHYS_FIELDS.reduce((a,f)=>({...a,[f.key]:""}),{})}]}))} solid>+ Add Physical Set</Btn>
@@ -645,7 +486,7 @@ export default function App(){
         </div>)}
 
         {/* ══ FLEETS ══ */}
-        {page==="fleets"&&(<div><SavePanel title="Setup Configurations" kind="setup" nameValue={saveNames.setup} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{setup:v})})}} items={savedBundles.setup} onSave={function(){saveBundle("setup")}} onLoad={function(id){loadBundle("setup",id)}} onDelete={function(id){deleteBundle("setup",id)}}/>
+        {page==="fleets"&&(<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <ST icon="🏗️">Fleet Combinations (Global)</ST>
             <Btn onClick={()=>setFleets(p=>[...p,mkFleet(`Fleet ${p.length+1}`)])} solid>+ Add Fleet</Btn>
@@ -703,7 +544,7 @@ export default function App(){
         </div>)}
 
         {/* ══ FORMULA EDITOR ══ */}
-        {page==="formulas"&&(<div><SavePanel title="Formula Configurations" kind="formulas" nameValue={saveNames.formulas} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{formulas:v})})}} items={savedBundles.formulas} onSave={function(){saveBundle("formulas")}} onLoad={function(id){loadBundle("formulas",id)}} onDelete={function(id){deleteBundle("formulas",id)}}/>
+        {page==="formulas"&&(<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
             <ST icon="🧮">Formula Editor</ST>
             <div style={{display:"flex",gap:8}}><input type="text" placeholder="Search..." value={formulaSearch} onChange={e=>setFormulaSearch(e.target.value)} style={{...selS,width:160}}/><Btn onClick={()=>{const k="custom_"+Date.now();setFormulas(p=>[...p,{key:k,label:"New Variable",unit:"",formula:"0",section:"🔧 CUSTOM"}]);setEditingFormula(k);setEditText("0")}} color={P.gn} solid>+ Add</Btn><Btn onClick={()=>{setFormulas(defaultFormulas());setEditingFormula(null)}} color={P.rd} small>Reset</Btn></div>
@@ -740,8 +581,8 @@ export default function App(){
         {page==="truck"&&(<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><ST icon="🚛">Truck Models</ST><div style={{display:"flex",gap:8}}><Btn onClick={()=>setTrucks(p=>[...p,mkTruck({truckName:`Truck ${p.length+1}`})])} solid>+ New</Btn><Btn onClick={()=>setTrucks(p=>[...p,mkTruckL()])} color={P.bl}>+ Liebherr</Btn><Btn onClick={()=>setTrucks(p=>[...p,mkTruck()])} color={P.gn}>+ XCMG</Btn></div></div>
           <div style={{...cardS,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
-            <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}><th style={{...thS,minWidth:190,position:"sticky",left:0,background:P.secBg,zIndex:2}}>Parameter</th><th style={{...thS,minWidth:45,fontSize:10}}>Unit</th>{trucks.map((t,i)=>(<th key={t.id} style={{...thS,minWidth:145}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><span style={{color:mClr[i%mClr.length],fontWeight:700,fontSize:13}}>Model {i+1}</span>{trucks.length>1&&<button onClick={()=>setTrucks(p=>p.filter((_,j)=>j!==i))} style={{background:P.rdBg,border:`1px solid ${P.rd}22`,borderRadius:5,color:P.rd,cursor:"pointer",padding:"2px 7px"}}>×</button>}</div></th>))}</tr></thead>
-            <tbody>{truckRows.map((r,i)=><CompRow key={i} {...r} models={trucks} onChange={updT}/>)}</tbody>
+            <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}><th style={{...thS,minWidth:190,position:"sticky",left:0,background:P.secBg,zIndex:2}}>Parameter</th><th style={{...thS,minWidth:150}}>Key</th><th style={{...thS,minWidth:45,fontSize:10}}>Unit</th>{trucks.map((t,i)=>(<th key={t.id} style={{...thS,minWidth:145}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><span style={{color:mClr[i%mClr.length],fontWeight:700,fontSize:13}}>Model {i+1}</span>{trucks.length>1&&<button onClick={()=>setTrucks(p=>p.filter((_,j)=>j!==i))} style={{background:P.rdBg,border:`1px solid ${P.rd}22`,borderRadius:5,color:P.rd,cursor:"pointer",padding:"2px 7px"}}>×</button>}</div></th>))}</tr></thead>
+            <tbody>{truckRows.map((r,i)=><CompRow key={i} {...r} models={trucks} onChange={updT} keyPrefix="T_"/>)}</tbody>
           </table></div>
         </div>)}
 
@@ -749,16 +590,17 @@ export default function App(){
         {page==="digger"&&(<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><ST icon="⛏️">Digger Models</ST><div style={{display:"flex",gap:8}}><Btn onClick={()=>setDiggers(p=>[...p,mkDigger({diggerName:`Digger ${p.length+1}`})])} solid>+ New</Btn><Btn onClick={()=>setDiggers(p=>[...p,mkDigger()])} color={P.bl}>+ 300t</Btn><Btn onClick={()=>setDiggers(p=>[...p,mkDigger4()])} color={P.gn}>+ 400t</Btn></div></div>
           <div style={{...cardS,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
-            <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}><th style={{...thS,minWidth:190,position:"sticky",left:0,background:P.secBg,zIndex:2}}>Parameter</th><th style={{...thS,minWidth:45,fontSize:10}}>Unit</th>{diggers.map((d,i)=>(<th key={d.id} style={{...thS,minWidth:145}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><span style={{color:mClr[i%mClr.length],fontWeight:700,fontSize:13}}>Model {i+1}</span>{diggers.length>1&&<button onClick={()=>setDiggers(p=>p.filter((_,j)=>j!==i))} style={{background:P.rdBg,border:`1px solid ${P.rd}22`,borderRadius:5,color:P.rd,cursor:"pointer",padding:"2px 7px"}}>×</button>}</div></th>))}</tr></thead>
-            <tbody>{diggerRows.map((r,i)=><CompRow key={i} {...r} models={diggers} onChange={updD}/>)}</tbody>
+            <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}><th style={{...thS,minWidth:190,position:"sticky",left:0,background:P.secBg,zIndex:2}}>Parameter</th><th style={{...thS,minWidth:150}}>Key</th><th style={{...thS,minWidth:45,fontSize:10}}>Unit</th>{diggers.map((d,i)=>(<th key={d.id} style={{...thS,minWidth:145}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><span style={{color:mClr[i%mClr.length],fontWeight:700,fontSize:13}}>Model {i+1}</span>{diggers.length>1&&<button onClick={()=>setDiggers(p=>p.filter((_,j)=>j!==i))} style={{background:P.rdBg,border:`1px solid ${P.rd}22`,borderRadius:5,color:P.rd,cursor:"pointer",padding:"2px 7px"}}>×</button>}</div></th>))}</tr></thead>
+            <tbody>{diggerRows.map((r,i)=><CompRow key={i} {...r} models={diggers} onChange={updD} keyPrefix="D_"/>)}</tbody>
           </table></div>
         </div>)}
 
         {/* ══ SETTINGS ══ */}
-        {page==="other"&&(<div style={{maxWidth:760}}><SavePanel title="Assumptions Configurations" kind="assumptions" nameValue={saveNames.assumptions} onNameChange={function(v){setSaveNames(function(prev){return Object.assign({},prev,{assumptions:v})})}} items={savedBundles.assumptions} onSave={function(){saveBundle("assumptions")}} onLoad={function(id){loadBundle("assumptions",id)}} onDelete={function(id){deleteBundle("assumptions",id)}}/><ST icon="⚙️">General Assumptions</ST><div style={{...cardS,padding:24}}>
-          {[["moistureContent","Moisture Content","%",0.001],["exchangeRate","Exchange Rate (AUD:USD)","ratio",0.01],["discountRate","Discount Rate","%",0.005],["electricityCost","Electricity Cost","$/kWh",0.001],["dieselCost","Diesel Cost","$/L",0.01],["allInFitterPerYear","All-in Fitter Rate","$/hr"],["mannedOperator","Manned Operator","$/SMU"],["calendarTime","Calendar Time","hrs/yr"],["diggerFleetRoundingThreshold","Digger Rounding","frac",0.05]].map(([k,l,u,s])=>(
-            <div key={k} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}><div style={{flex:1,color:P.txM,fontSize:14,fontWeight:500}}>{l}</div><input type="number" value={otherA[k]} onChange={e=>uO(k,parseFloat(e.target.value)||0)} step={s||0.01} style={{width:145,padding:"7px 12px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:7,color:P.tx,fontFamily:mf,fontSize:14,textAlign:"right"}}/><span style={{color:P.txD,fontSize:12,fontWeight:500,minWidth:55}}>{u}</span></div>))}
-        </div></div>)}
+        {page==="other"&&(<div style={{maxWidth:860}}><ST icon="⚙️">General Assumptions</ST><div style={{...cardS,padding:18,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%",minWidth:620}}>
+          <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}><th style={{...thS,minWidth:220}}>Parameter</th><th style={{...thS,minWidth:180}}>Key</th><th style={{...thS,minWidth:70}}>Unit</th><th style={{...thS,minWidth:160,textAlign:"right"}}>Value</th></tr></thead>
+          <tbody>{[["moistureContent","Moisture Content","%",0.001],["exchangeRate","Exchange Rate (AUD:USD)","ratio",0.01],["discountRate","Discount Rate","%",0.005],["electricityCost","Electricity Cost","$/kWh",0.001],["dieselCost","Diesel Cost","$/L",0.01],["allInFitterPerYear","All-in Fitter Rate","$/hr"],["mannedOperator","Manned Operator","$/SMU"],["calendarTime","Calendar Time","hrs/yr"],["diggerFleetRoundingThreshold","Digger Rounding","frac",0.05]].map(([k,l,u,s])=>(
+            <tr key={k} style={{borderBottom:`1px solid ${P.bd}`}}><td style={{padding:"9px 10px",color:P.txM,fontSize:13,fontWeight:500}}>{l}</td><td style={{padding:"9px 10px",color:P.txD,fontSize:11,fontFamily:mf}}>G_{k}</td><td style={{padding:"9px 10px",color:P.txD,fontSize:11,fontFamily:mf}}>{u}</td><td style={{padding:"6px 10px"}}><input type="number" value={otherA[k]} onChange={e=>uO(k,parseFloat(e.target.value)||0)} step={s||0.01} style={{width:"100%",maxWidth:160,padding:"7px 12px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:7,color:P.tx,fontFamily:mf,fontSize:14,textAlign:"right",marginLeft:"auto",display:"block"}}/></td></tr>))}</tbody>
+        </table></div></div>)}
 
         {/* ══ COMPARISON ══ */}
         {page==="comparison"&&(<div>
@@ -865,13 +707,7 @@ export default function App(){
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Fleet Load Time Breakdown (Stacked)</div>
               <ResponsiveContainer width="100%" height={300}><BarChart data={fleets.map(function(fl){var trk=trucks[Math.min(fl.truckIdx,trucks.length-1)];return{name:fl.name,Load:fl.loadTime||0,SpotLoad:trk.spotTimeLoad||0,QueueLoad:trk.queueTimeLoad||0,SpotDump:trk.spotTimeDump||0,QueueDump:trk.queueTimeDump||0,Dump:trk.dumpTime||0}})} margin={{top:10,right:20,left:10,bottom:5}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="name" fontSize={11}/><YAxis fontSize={10} label={{value:"min",angle:-90,position:"insideLeft",fontSize:10}}/><Tooltip/>
-                <Legend wrapperStyle={{fontSize:10}}/>
-                <Bar dataKey="SpotLoad" stackId="a" fill={mClr[0]} name="Spot@Load"><LabelList dataKey="SpotLoad" position="inside" formatter={function(v){return v?Number(v).toFixed(1):""}} fill="#fff" fontSize={9}/></Bar>
-                <Bar dataKey="QueueLoad" stackId="a" fill={mClr[1]} name="Queue@Load"><LabelList dataKey="QueueLoad" position="inside" formatter={function(v){return v?Number(v).toFixed(1):""}} fill="#fff" fontSize={9}/></Bar>
-                <Bar dataKey="Load" stackId="a" fill={mClr[2]} name="Load"><LabelList dataKey="Load" position="inside" formatter={function(v){return v?Number(v).toFixed(1):""}} fill="#fff" fontSize={9}/></Bar>
-                <Bar dataKey="SpotDump" stackId="a" fill={mClr[3]} name="Spot@Dump"><LabelList dataKey="SpotDump" position="inside" formatter={function(v){return v?Number(v).toFixed(1):""}} fill="#fff" fontSize={9}/></Bar>
-                <Bar dataKey="QueueDump" stackId="a" fill={mClr[4]} name="Queue@Dump"><LabelList dataKey="QueueDump" position="inside" formatter={function(v){return v?Number(v).toFixed(1):""}} fill="#fff" fontSize={9}/></Bar>
-                <Bar dataKey="Dump" stackId="a" fill={mClr[5]} name="Dump"><LabelList dataKey="Dump" position="inside" formatter={function(v){return v?Number(v).toFixed(1):""}} fill="#fff" fontSize={9}/></Bar>
+                <Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="SpotLoad" stackId="a" fill={mClr[0]} name="Spot@Load"/><Bar dataKey="QueueLoad" stackId="a" fill={mClr[1]} name="Queue@Load"/><Bar dataKey="Load" stackId="a" fill={mClr[2]} name="Load"/><Bar dataKey="SpotDump" stackId="a" fill={mClr[3]} name="Spot@Dump"/><Bar dataKey="QueueDump" stackId="a" fill={mClr[4]} name="Queue@Dump"/><Bar dataKey="Dump" stackId="a" fill={mClr[5]} name="Dump"/>
               </BarChart></ResponsiveContainer>
             </div>
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Formulas by Section</div>
@@ -888,8 +724,8 @@ export default function App(){
         {page==="charts_results"&&(<div>
           <ST icon="📈">Results Charts — {scn.name}</ST>
           {results.length===0?<p style={{color:P.txD}}>No results data.</p>:(function(){
-            var pData=combinedPeriodData;
-            var physData=combinedPhysicals;
+            var pData=results.filter(function(r){return r.res});
+            var physData=[];for(var pi2=0;pi2<numPeriods;pi2++){var fleet0=activeFleets[0];if(!fleet0)continue;var pd3=getPd(pi2,fleet0);if(!pd3)continue;physData.push({period:pd3.periodLabel||("P"+(pi2+1)),Ore:(pd3.oreMined||0)*scn.unitMul,Waste:(pd3.wasteMined||0)*scn.unitMul,RampBuild:(pd3.totalRampMined||0)*scn.unitMul,Fe:pd3.oreFePct||0,Si:pd3.oreSiPct||0,Al:pd3.oreAlPct||0,P:pd3.orePPct||0})}
             return(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
             {/* Physicals: Tonnage stacked bar */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Mining Physicals — Tonnage</div>
@@ -902,44 +738,33 @@ export default function App(){
             {/* Physicals: Ore grade combo chart */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Ore Tonnage & Grade</div>
               <ChartToggles series={[{key:"cOre",label:"Ore (bar)",color:mClr[0]},{key:"cFe",label:"Fe%",color:"#dc2626"},{key:"cSi",label:"Si%",color:"#2563eb"},{key:"cAl",label:"Al%",color:"#059669"},{key:"cP",label:"P%",color:"#d97706"}]} hidden={hiddenSeries} onToggle={togSeries}/>
-              <ResponsiveContainer width="100%" height={300}><ComposedChart data={physData} margin={{top:10,right:50,left:10,bottom:40}}>
-                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={10} tickFormatter={function(v){return(v/1e3).toFixed(0)+"k"}}/><YAxis yAxisId="right" orientation="right" fontSize={10} domain={["auto","auto"]} tickFormatter={function(v){return Number(v).toFixed(2)+"%"}}/><Tooltip formatter={function(v,n){return n==="Ore (t)"?fmtInt(v)+" t":Number(v).toFixed(2)+"%"}}/>
-                <Legend wrapperStyle={{fontSize:10}}/>{isVis("cOre")&&<Bar yAxisId="left" dataKey="Ore" fill={mClr[0]} name="Ore (t)"/>}{isVis("cFe")&&<Line yAxisId="right" type="monotone" dataKey="Fe" stroke="#dc2626" strokeWidth={2} name="Fe%" dot={{r:3}} connectNulls={true}/>}{isVis("cSi")&&<Line yAxisId="right" type="monotone" dataKey="Si" stroke="#2563eb" strokeWidth={2} name="Si%" dot={{r:3}} connectNulls={true}/>}{isVis("cAl")&&<Line yAxisId="right" type="monotone" dataKey="Al" stroke="#059669" strokeWidth={2} name="Al%" dot={{r:3}} connectNulls={true}/>}{isVis("cP")&&<Line yAxisId="right" type="monotone" dataKey="P" stroke="#d97706" strokeWidth={2} name="P%" dot={{r:3}} connectNulls={true}/>}
-              </ComposedChart></ResponsiveContainer>
+              <ResponsiveContainer width="100%" height={300}><BarChart data={physData} margin={{top:10,right:50,left:10,bottom:40}}>
+                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={10} tickFormatter={function(v){return(v/1e3).toFixed(0)+"k"}}/><YAxis yAxisId="right" orientation="right" fontSize={10} tickFormatter={function(v){return v.toFixed(1)+"%"}}/><Tooltip/>
+                <Legend wrapperStyle={{fontSize:10}}/>{isVis("cOre")&&<Bar yAxisId="left" dataKey="Ore" fill={mClr[0]} name="Ore (t)" opacity={0.6}/>}{isVis("cFe")&&<Line yAxisId="right" type="monotone" dataKey="Fe" stroke="#dc2626" strokeWidth={2} name="Fe%" dot={{r:3}}/>}{isVis("cSi")&&<Line yAxisId="right" type="monotone" dataKey="Si" stroke="#2563eb" strokeWidth={2} name="Si%" dot={{r:3}}/>}{isVis("cAl")&&<Line yAxisId="right" type="monotone" dataKey="Al" stroke="#059669" strokeWidth={2} name="Al%" dot={{r:3}}/>}{isVis("cP")&&<Line yAxisId="right" type="monotone" dataKey="P" stroke="#d97706" strokeWidth={2} name="P%" dot={{r:3}}/>}
+              </BarChart></ResponsiveContainer>
             </div>
             {/* Cost per tonne */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Cost per Tonne by Period</div>
-              <ResponsiveContainer width="100%" height={300}><BarChart data={pData} margin={{top:10,right:20,left:10,bottom:40}}>
-                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+v.toFixed(2)}}/><Tooltip formatter={function(v){return fmtC2(v)}}/>
-                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="TruckCPT" stackId="a" fill={mClr[0]} name="Truck $/t"/><Bar dataKey="DiggerCPT" stackId="a" fill={mClr[1]} name="Digger $/t"/>
-              </BarChart></ResponsiveContainer>
+              <ChartToggles series={[{key:"TotalCPT",label:"Total $/t",color:mClr[0]},{key:"TruckCPT",label:"Truck $/t",color:mClr[1]},{key:"DiggerCPT",label:"Digger $/t",color:mClr[2]}]} hidden={hiddenSeries} onToggle={togSeries}/>
+              <ResponsiveContainer width="100%" height={300}><LineChart data={pData.map(function(r){return{period:r.periodLabel,TotalCPT:r.res.totPerT||0,TruckCPT:r.res.trkPerT||0,DiggerCPT:r.res.digOpxPerT||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
+                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+v.toFixed(1)}}/><Tooltip formatter={function(v){return fmtC2(v)}}/>
+                <Legend wrapperStyle={{fontSize:11}}/>{isVis("TotalCPT")&&<Line type="monotone" dataKey="TotalCPT" stroke={mClr[0]} strokeWidth={2} name="Total $/t"/>}{isVis("TruckCPT")&&<Line type="monotone" dataKey="TruckCPT" stroke={mClr[1]} strokeWidth={2} name="Truck $/t"/>}{isVis("DiggerCPT")&&<Line type="monotone" dataKey="DiggerCPT" stroke={mClr[2]} strokeWidth={2} name="Digger $/t"/>}
+              </LineChart></ResponsiveContainer>
             </div>
             {/* Total cost stacked */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Total Cost Breakdown (Stacked)</div>
-              <ChartToggles series={[
-                {key:"TruckCapex",label:"Truck Capex",color:"#1d4ed8"},
-                {key:"DiggerCapex",label:"Digger Capex",color:"#15803d"},
-                {key:"TruckOpex",label:"Truck Opex",color:"#60a5fa"},
-                {key:"DiggerOpex",label:"Digger Opex",color:"#4ade80"},
-                {key:"Rehandle",label:"Rehandle Opex",color:"#f59e0b"},
-                {key:"ChargerCapex",label:"Charger Capex",color:"#7c3aed"},
-                {key:"BatteryCapex",label:"Battery Capex",color:"#92400e"}
-              ]} hidden={hiddenSeries} onToggle={togSeries}/>
-              <ResponsiveContainer width="100%" height={300}><BarChart data={pData} margin={{top:10,right:20,left:10,bottom:40}}>
+              <ChartToggles series={[{key:"TruckOpex",label:"Truck exc Cpx",color:mClr[0]},{key:"DiggerOpex",label:"Digger Opex",color:mClr[1]},{key:"Rehandle",label:"Rehandle",color:mClr[2]}]} hidden={hiddenSeries} onToggle={togSeries}/>
+              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,TruckOpex:r.res.totTrkExc||0,DiggerOpex:r.res.digOpxTotal||0,Rehandle:r.res.digRehandle||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+(v/1e6).toFixed(1)+"M"}}/><Tooltip formatter={function(v){return fmtCur(v)}}/>
-                <Legend wrapperStyle={{fontSize:11}}/>
-                {isVis("TruckCapex")&&<Bar dataKey="TruckCapex" stackId="a" fill="#1d4ed8" name="Truck Capex"/>}
-                {isVis("DiggerCapex")&&<Bar dataKey="DiggerCapex" stackId="a" fill="#15803d" name="Digger Capex"/>}
-                {isVis("TruckOpex")&&<Bar dataKey="TruckOpex" stackId="a" fill="#60a5fa" name="Truck Opex"/>}
-                {isVis("DiggerOpex")&&<Bar dataKey="DiggerOpex" stackId="a" fill="#4ade80" name="Digger Opex"/>}
-                {isVis("Rehandle")&&<Bar dataKey="Rehandle" stackId="a" fill="#f59e0b" name="Rehandle Opex"/>}
-                {isVis("ChargerCapex")&&<Bar dataKey="ChargerCapex" stackId="a" fill="#7c3aed" name="Charger Capex"/>}
-                {isVis("BatteryCapex")&&<Bar dataKey="BatteryCapex" stackId="a" fill="#92400e" name="Battery Capex"/>}
+                <Legend wrapperStyle={{fontSize:11}}/>{isVis("TruckOpex")&&<Bar dataKey="TruckOpex" stackId="a" fill={mClr[0]} name="Truck exc Cpx"/>}{isVis("DiggerOpex")&&<Bar dataKey="DiggerOpex" stackId="a" fill={mClr[1]} name="Digger Opex"/>}{isVis("Rehandle")&&<Bar dataKey="Rehandle" stackId="a" fill={mClr[2]} name="Rehandle"/>}
               </BarChart></ResponsiveContainer>
             </div>
             {/* Fleet sizing */}
-            <div style={Object.assign({},cardS,{gridColumn:"1 / -1"})}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Fleet Sizing by Period — by Fleet Combo</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:16,padding:16}}>{fleetChartData.map(function(fc,fi){return(<div key={fc.fleet.id} style={{border:"1px solid "+P.bd,borderRadius:8,overflow:"hidden"}}><div style={{padding:"8px 12px",background:P.priBg,color:mClr[fi%mClr.length],fontWeight:700,fontSize:12}}>{fc.fleet.name}</div><div style={{padding:12}}><div><div style={{fontWeight:600,color:P.txM,fontSize:11,marginBottom:4}}>Truck Fleet + Chargers</div><ResponsiveContainer width="100%" height={260}><ComposedChart data={fc.data} margin={{top:10,right:24,left:10,bottom:40}}><CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={10} allowDecimals={false}/><YAxis yAxisId="right" orientation="right" fontSize={10} allowDecimals={false}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Bar yAxisId="left" dataKey="Trucks" fill={mClr[0]} name="Trucks"/><Line yAxisId="right" type="monotone" dataKey="Chargers" stroke={mClr[2]} strokeWidth={2} dot={{r:3}} name="Chargers"/></ComposedChart></ResponsiveContainer></div><div style={{marginTop:12}}><div style={{fontWeight:600,color:P.txM,fontSize:11,marginBottom:4}}>Digger Fleet</div><ResponsiveContainer width="100%" height={240}><BarChart data={fc.data} margin={{top:10,right:20,left:10,bottom:40}}><CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} allowDecimals={false}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Diggers" fill={mClr[1]}/></BarChart></ResponsiveContainer></div></div></div>)})}</div>
+            <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Fleet Sizing by Period</div>
+              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,Trucks:r.res.trkReqR||0,Diggers:r.res.digFleet||0,Chargers:r.res.chgStaRnd||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
+                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} allowDecimals={false}/><Tooltip/>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="Trucks" fill={mClr[0]}/><Bar dataKey="Diggers" fill={mClr[1]}/><Bar dataKey="Chargers" fill={mClr[2]}/>
+              </BarChart></ResponsiveContainer>
             </div>
             {/* Cost split pie */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Cost Split — Digger vs Truck</div>
@@ -951,12 +776,10 @@ export default function App(){
             </div>
             {/* Digger opex stacked full width */}
             <div style={Object.assign({},cardS,{gridColumn:"1 / -1"})}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Digger Opex Components (Stacked)</div>
-              <div style={{padding:"0 16px 16px",fontWeight:600,color:P.txM,fontSize:11}}>Combined</div>
-              <ResponsiveContainer width="100%" height={300}><BarChart data={pData} margin={{top:10,right:20,left:10,bottom:40}}>
+              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,Diesel:r.res.digOpxDiesel||0,Maint:r.res.digOpxMaint||0,Parts:r.res.digOpxParts||0,GET:r.res.digOpxGET||0,Operator:r.res.digOpxOperator||0,Other:(r.res.digOpxOil||0)+(r.res.digOpxCable||0)+(r.res.digOpxTracks||0)+(r.res.digOpxTires||0)+(r.res.digOpxFMS||0)+(r.res.digOpxBattery||0)+(r.res.digOpxMaterials||0)}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+(v/1e6).toFixed(1)+"M"}}/><Tooltip formatter={function(v){return fmtCur(v)}}/>
                 <Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Diesel" stackId="a" fill="#3b82f6" name="Diesel/Elec"/><Bar dataKey="Maint" stackId="a" fill="#10b981" name="Maint Labour"/><Bar dataKey="Parts" stackId="a" fill="#f59e0b" name="Parts PM05"/><Bar dataKey="GET" stackId="a" fill="#ef4444" name="GET"/><Bar dataKey="Operator" stackId="a" fill="#8b5cf6" name="Operator"/><Bar dataKey="Other" stackId="a" fill="#6b7280" name="Other"/>
               </BarChart></ResponsiveContainer>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(420px, 1fr))",gap:16,padding:16}}>{fleetChartData.map(function(fc,fi){return(<div key={fc.fleet.id} style={{border:"1px solid "+P.bd,borderRadius:8,overflow:"hidden"}}><div style={{padding:"8px 12px",background:P.priBg,color:mClr[fi%mClr.length],fontWeight:700,fontSize:12}}>{fc.fleet.name}</div><ResponsiveContainer width="100%" height={260}><BarChart data={fc.data} margin={{top:10,right:20,left:10,bottom:40}}><CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+(v/1e6).toFixed(1)+"M"}}/><Tooltip formatter={function(v){return fmtCur(v)}}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Diesel" stackId="a" fill="#3b82f6" name="Diesel/Elec"/><Bar dataKey="Maint" stackId="a" fill="#10b981" name="Maint Labour"/><Bar dataKey="Parts" stackId="a" fill="#f59e0b" name="Parts PM05"/><Bar dataKey="GET" stackId="a" fill="#ef4444" name="GET"/><Bar dataKey="Operator" stackId="a" fill="#8b5cf6" name="Operator"/><Bar dataKey="Other" stackId="a" fill="#6b7280" name="Other"/></BarChart></ResponsiveContainer></div>)})}</div>
             </div>
           </div>)})()}
         </div>)}
@@ -1012,39 +835,15 @@ export default function App(){
           <ST icon="⛏️">Mining Physicals by Scenario</ST>
           {scenarios.map(function(s,si){
             var np3=s.csvData?s.csvData.np:s.manualData.length;
+            var aFl2=fleets.filter(function(f){return s.activeFleetIds.length===0||s.activeFleetIds.includes(f.id)});
+            var fleet3=aFl2[0];if(!fleet3)return null;
             var physData3=[];
             for(var pi3=0;pi3<np3;pi3++){
-              var tonnageSources=[];
-              if(s.csvData&&s.fieldMappings&&s.fieldMappings.length){
-                for(var ms3=0;ms3<s.fieldMappings.length;ms3++){
-                  var mapping3=s.fieldMappings[ms3];
-                  if(!mapping3)continue;
-                  var pd4={periodLabel:s.csvData.gs("Period",pi3)||("P"+(pi3+1))};
-                  for(var pfi2=0;pfi2<PHYS_FIELDS.length;pfi2++){
-                    var pf2=PHYS_FIELDS[pfi2];
-                    pd4[pf2.key]=mapping3.fields[pf2.key]?s.csvData.gv(mapping3.fields[pf2.key],pi3):0;
-                  }
-                  tonnageSources.push(pd4);
-                }
-              } else if(s.manualData[pi3]) {
-                var pd4=s.manualData[pi3];
-                pd4.periodLabel=pd4.periodLabel||("P"+(pi3+1));
-                tonnageSources.push(pd4);
-              }
-              if(!tonnageSources.length)continue;
-              var oreTotal=0,wasteTotal=0,rampTotal=0,feNum=0,siNum=0,alNum=0,pNum=0,periodLabel=tonnageSources[0].periodLabel||("P"+(pi3+1));
-              for(var ts3=0;ts3<tonnageSources.length;ts3++){
-                var src3=tonnageSources[ts3]||{};
-                var ore3=(src3.oreMined||0)*s.unitMul;
-                oreTotal+=ore3;
-                wasteTotal+=(src3.wasteMined||0)*s.unitMul;
-                rampTotal+=(src3.totalRampMined||0)*s.unitMul;
-                feNum+=ore3*(src3.oreFePct||0);
-                siNum+=ore3*(src3.oreSiPct||0);
-                alNum+=ore3*(src3.oreAlPct||0);
-                pNum+=ore3*(src3.orePPct||0);
-              }
-              physData3.push({period:periodLabel,Ore:oreTotal,Waste:wasteTotal,RampBuild:rampTotal,Fe:oreTotal?feNum/oreTotal:0,Si:oreTotal?siNum/oreTotal:0,Al:oreTotal?alNum/oreTotal:0,P:oreTotal?pNum/oreTotal:0});
+              var psIdx3=s.fleetPhysicalSets[fleet3.id]||0;var mapping3=s.fieldMappings[psIdx3]||s.fieldMappings[0];var pd4=null;
+              if(s.csvData&&mapping3){pd4={periodLabel:s.csvData.gs("Period",pi3)||("P"+(pi3+1))};for(var pfi2=0;pfi2<PHYS_FIELDS.length;pfi2++){var pf2=PHYS_FIELDS[pfi2];pd4[pf2.key]=mapping3.fields[pf2.key]?s.csvData.gv(mapping3.fields[pf2.key],pi3):0}}
+              else if(s.manualData[pi3]){pd4=s.manualData[pi3];pd4.periodLabel=pd4.periodLabel||("P"+(pi3+1))}
+              if(!pd4)continue;
+              physData3.push({period:pd4.periodLabel,Ore:(pd4.oreMined||0)*s.unitMul,Waste:(pd4.wasteMined||0)*s.unitMul,RampBuild:(pd4.totalRampMined||0)*s.unitMul,Fe:pd4.oreFePct||0,Si:pd4.oreSiPct||0,Al:pd4.oreAlPct||0,P:pd4.orePPct||0});
             }
             return(<div key={si} style={{marginBottom:24}}>
               <div style={{padding:"8px 14px",background:P.priBg,borderRadius:"8px 8px 0 0",border:"1px solid "+P.pri+"22",borderBottom:"none"}}><span style={{color:P.pri,fontWeight:700,fontSize:14}}>{s.name}</span></div>
@@ -1057,11 +856,11 @@ export default function App(){
                   </BarChart></ResponsiveContainer>
                 </div>
                 <div style={{padding:12}}>
-                  <div style={{fontWeight:600,color:P.txM,fontSize:12,marginBottom:4}}>Ore Tonnes & Weighted Grades</div>
-                  <ResponsiveContainer width="100%" height={250}><ComposedChart data={physData3} margin={{top:5,right:40,left:5,bottom:35}}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={9} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={9} tickFormatter={function(v){return(v/1e3).toFixed(0)+"k"}}/><YAxis yAxisId="right" orientation="right" fontSize={9} tickFormatter={function(v){return v.toFixed(2)+"%"}}/><Tooltip formatter={function(v,n){return n==="Ore (t)"?fmtInt(v)+" t":Number(v).toFixed(2)+"%"}}/>
-                    <Legend wrapperStyle={{fontSize:9}}/><Bar yAxisId="left" dataKey="Ore" fill={mClr[0]} name="Ore (t)"/><Line yAxisId="right" type="monotone" dataKey="Fe" stroke="#dc2626" strokeWidth={2} name="Fe%" dot={{r:2}}/><Line yAxisId="right" type="monotone" dataKey="Si" stroke="#2563eb" strokeWidth={2} name="Si%" dot={{r:2}}/><Line yAxisId="right" type="monotone" dataKey="Al" stroke="#059669" strokeWidth={2} name="Al%" dot={{r:2}}/><Line yAxisId="right" type="monotone" dataKey="P" stroke="#d97706" strokeWidth={2} name="P%" dot={{r:2}}/>
-                  </ComposedChart></ResponsiveContainer>
+                  <div style={{fontWeight:600,color:P.txM,fontSize:12,marginBottom:4}}>Ore & Grade</div>
+                  <ResponsiveContainer width="100%" height={250}><BarChart data={physData3} margin={{top:5,right:40,left:5,bottom:35}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={9} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={9} tickFormatter={function(v){return(v/1e3).toFixed(0)+"k"}}/><YAxis yAxisId="right" orientation="right" fontSize={9} tickFormatter={function(v){return v.toFixed(1)+"%"}}/><Tooltip/>
+                    <Legend wrapperStyle={{fontSize:9}}/><Bar yAxisId="left" dataKey="Ore" fill={mClr[0]} name="Ore (t)" opacity={0.5}/><Line yAxisId="right" type="monotone" dataKey="Fe" stroke="#dc2626" strokeWidth={2} name="Fe%" dot={{r:2}}/><Line yAxisId="right" type="monotone" dataKey="Si" stroke="#2563eb" strokeWidth={2} name="Si%" dot={{r:2}}/><Line yAxisId="right" type="monotone" dataKey="Al" stroke="#059669" strokeWidth={2} name="Al%" dot={{r:2}}/><Line yAxisId="right" type="monotone" dataKey="P" stroke="#d97706" strokeWidth={2} name="P%" dot={{r:2}}/>
+                  </BarChart></ResponsiveContainer>
                 </div>
               </div>
             </div>);

@@ -319,6 +319,29 @@ export default function App(){
     return scn.manualData[pi]||null;
   },[scn]);
 
+  const getAssignedFleetIdForSet=(setIdx,scenario)=>{
+    var s=scenario||scn;
+    if(s.physicalSetFleetIds && s.physicalSetFleetIds[setIdx]!==undefined) return s.physicalSetFleetIds[setIdx] || "";
+    const explicit=fleets.find(function(f){
+      const ps=(s.fleetPhysicalSets&&s.fleetPhysicalSets[f.id]!==undefined?s.fleetPhysicalSets[f.id]:-1);
+      const active=(s.activeFleetIds.length===0||s.activeFleetIds.includes(f.id));
+      return active&&ps===setIdx;
+    });
+    if(explicit)return explicit.id;
+    if(s.activeFleetIds.length===0&&fleets[setIdx])return fleets[setIdx].id;
+    return "";
+  };
+
+  const getScenarioAssignments=(scenario)=>{
+    var s=scenario||scn;
+    var maps=(s.fieldMappings&&s.fieldMappings.length?s.fieldMappings:[{name:"Base Set",fields:{}}]);
+    return maps.map(function(mapping,mi){
+      var fleetId=getAssignedFleetIdForSet(mi,s);
+      var fleet=fleets.find(function(f){return f.id===fleetId;})||null;
+      return {setIdx:mi,mapping:mapping,fleetId:fleetId,fleet:fleet};
+    }).filter(function(row){return !!row.fleetId && !!row.fleet;});
+  };
+
   const numPeriods=scn.csvData?scn.csvData.np:scn.manualData.length;
   const activeFleets=fleets.filter(f=>scn.activeFleetIds.length===0||scn.activeFleetIds.includes(f.id));
   const activeAssignments=useMemo(function(){ return getScenarioAssignments(scn); },[scn,fleets]);

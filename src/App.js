@@ -723,7 +723,7 @@ export default function App(){
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Truck Capex & Power System</div>
               <ResponsiveContainer width="100%" height={300}><BarChart data={trucks.map(function(t){return{name:t.truckName.substring(0,15),Capex:t.totalTruckCapex,PowerSystem:t.powerSystemCost}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="name" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+(v/1e6).toFixed(1)+"M"}}/><Tooltip formatter={function(v){return fmtCur(v)}}/>
-                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="Capex" fill={mClr[0]}>{showChartLabels&&<LabelList dataKey="Capex" position="insideTop" formatter={function(v){return (v/1e6).toFixed(1)+"M"}/>}</Bar><Bar dataKey="PowerSystem" fill={mClr[1]}>{showChartLabels&&<LabelList dataKey="PowerSystem" position="insideTop" formatter={function(v){return (v/1e6).toFixed(1)+"M"}/>}</Bar>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="Capex" fill={mClr[0]}>{showChartLabels&&<LabelList dataKey="Capex" position="insideTop" formatter={function(v){return (v/1e6).toFixed(1)+"M"}}/>}</Bar><Bar dataKey="PowerSystem" fill={mClr[1]}>{showChartLabels&&<LabelList dataKey="PowerSystem" position="insideTop" formatter={function(v){return (v/1e6).toFixed(1)+"M"}}/>}</Bar>
               </BarChart></ResponsiveContainer>
             </div>
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Truck TUM Parameters (%)</div>

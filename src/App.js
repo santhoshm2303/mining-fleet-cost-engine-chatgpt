@@ -304,10 +304,9 @@ export default function App(){
     rd.readAsText(f);
   },[activeScnIdx]);
 
-  // Resolve period data for a fleet in active scenario
-  const getPd=useCallback((pi,fleet)=>{
-    const psIdx=scn.fleetPhysicalSets[fleet.id]||0;
-    const mapping=scn.fieldMappings[psIdx]||scn.fieldMappings[0];
+  // Resolve period data for a physical set in active scenario
+  const getPdForSet=useCallback((pi,setIdx)=>{
+    const mapping=scn.fieldMappings[setIdx]||scn.fieldMappings[0];
     if(!mapping)return null;
     if(scn.csvData){
       const desc=(mapping.desc||mapping.name||"Base Set");
@@ -320,21 +319,23 @@ export default function App(){
   },[scn]);
 
   const numPeriods=scn.csvData?scn.csvData.np:scn.manualData.length;
-  const activeFleets=fleets.filter(f=>scn.activeFleetIds.length===0||scn.activeFleetIds.includes(f.id));
+  const scenarioAssignments=useMemo(()=>getScenarioAssignments(scn),[scn,fleets]);
+  const activeFleets=useMemo(()=>scenarioAssignments.map(function(a){return a.fleet;}),[scenarioAssignments]);
 
   // Calculate results
   const results=useMemo(()=>{
     const all=[];
     for(let pi=0;pi<numPeriods;pi++){
-      for(const fleet of activeFleets){
-        const pd=getPd(pi,fleet);if(!pd)continue;
+      for(const assignment of scenarioAssignments){
+        const fleet=assignment.fleet;
+        const pd=getPdForSet(pi,assignment.setIdx);if(!pd)continue;
         const ti=Math.min(fleet.truckIdx,trucks.length-1),di=Math.min(fleet.diggerIdx,diggers.length-1);
         const res=calcWithFormulas({totalMined:(pd.totalMined||0)*scn.unitMul,oreMined:(pd.oreMined||0)*scn.unitMul,totalRampMined:(pd.totalRampMined||pd.totalMined||0)*scn.unitMul,avgLoadedTravelTime:pd.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd.avgUnloadedTravelTime||0,avgNetPower:pd.avgNetPower||0,avgTkphDelay:pd.avgTkphDelay||0,schedPeriod:scn.schedPeriod,calendarDays:pd.days||91,calendarHours:pd.hours||2184,truck:trucks[ti],digger:diggers[di],other:otherA,fleet:fleet},formulas);
-        all.push({pi,periodLabel:pd.periodLabel||`P${pi+1}`,fleet,fleetName:fleet.name,truckName:trucks[ti]?.truckName,diggerName:diggers[di]?.diggerName,equipKey:`${fleet.truckIdx}-${fleet.diggerIdx}`,res,pd});
+        all.push({pi,periodLabel:pd.periodLabel||`P${pi+1}`,fleet,fleetName:fleet.name,physicalSetName:assignment.mapping?.name||`Set ${assignment.setIdx+1}`,setIdx:assignment.setIdx,truckName:trucks[ti]?.truckName,diggerName:diggers[di]?.diggerName,equipKey:`${fleet.truckIdx}-${fleet.diggerIdx}`,res,pd});
       }
     }
     return all;
-  },[numPeriods,activeFleets,trucks,diggers,otherA,formulas,scn,getPd]);
+  },[numPeriods,scenarioAssignments,trucks,diggers,otherA,formulas,scn,getPdForSet]);
 
   const equipGroups=useMemo(()=>{
     const g={};for(const r of results){if(!g[r.equipKey])g[r.equipKey]={key:r.equipKey,truckName:r.truckName,diggerName:r.diggerName,fleetNames:[],results:[]};if(!g[r.equipKey].fleetNames.includes(r.fleetName))g[r.equipKey].fleetNames.push(r.fleetName);g[r.equipKey].results.push(r)}
@@ -344,11 +345,12 @@ export default function App(){
   const totals=useMemo(()=>{const t={m:0,c:0};results.forEach(r=>{if(!r.res)return;t.m+=(r.pd?.totalMined||0)*scn.unitMul;t.c+=r.res.totCost||0});t.cpt=t.m>0?t.c/t.m:0;return t},[results,scn.unitMul]);
 
   const testResult=useMemo(()=>{
-    const fleet=activeFleets[testFleetIdx]||activeFleets[0];if(!fleet)return null;
-    const pd=getPd(testPeriodIdx,fleet);if(!pd)return null;
+    const assignment=scenarioAssignments[testFleetIdx]||scenarioAssignments[0];if(!assignment||!assignment.fleet)return null;
+    const fleet=assignment.fleet;
+    const pd=getPdForSet(testPeriodIdx,assignment.setIdx);if(!pd)return null;
     const ti=Math.min(fleet.truckIdx,trucks.length-1),di=Math.min(fleet.diggerIdx,diggers.length-1);
     return calcWithFormulas({totalMined:(pd.totalMined||0)*scn.unitMul,oreMined:(pd.oreMined||0)*scn.unitMul,totalRampMined:(pd.totalRampMined||pd.totalMined||0)*scn.unitMul,avgLoadedTravelTime:pd.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd.avgUnloadedTravelTime||0,avgNetPower:pd.avgNetPower||0,avgTkphDelay:pd.avgTkphDelay||0,schedPeriod:scn.schedPeriod,calendarDays:pd.days||91,calendarHours:pd.hours||2184,truck:trucks[ti],digger:diggers[di],other:otherA,fleet:fleet},formulas);
-  },[testPeriodIdx,testFleetIdx,activeFleets,trucks,diggers,otherA,formulas,scn,getPd]);
+  },[testPeriodIdx,testFleetIdx,scenarioAssignments,trucks,diggers,otherA,formulas,scn,getPdForSet]);
 
   const updT=(i,f,v)=>setTrucks(p=>{const n=[...p];n[i]={...n[i],[f]:v};return n});
   const updD=(i,f,v)=>setDiggers(p=>{const n=[...p];n[i]={...n[i],[f]:v};return n});
@@ -684,7 +686,7 @@ export default function App(){
           <div style={{...cardS,padding:"10px 14px",marginBottom:10,display:"flex",gap:14,alignItems:"center",flexWrap:"wrap",background:P.gnBg,borderColor:`${P.gn}33`}}>
             <span style={{color:P.gn,fontWeight:700,fontSize:12}}>🧪 Test:</span>
             <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Period:</span><select value={testPeriodIdx} onChange={e=>setTestPeriodIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{Array.from({length:numPeriods},(_,i)=><option key={i} value={i}>P{i+1}</option>)}</select></div>
-            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Fleet:</span><select value={testFleetIdx} onChange={e=>setTestFleetIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{activeFleets.map((f,i)=><option key={i} value={i}>{f.name}</option>)}</select></div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Fleet:</span><select value={testFleetIdx} onChange={e=>setTestFleetIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{scenarioAssignments.map((a,i)=><option key={i} value={i}>{(a.mapping?.name||("Set "+(i+1)))+" → "+a.fleet.name}</option>)}</select></div>
           </div>
           <div style={{...cardS,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
             <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}>

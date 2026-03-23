@@ -17,6 +17,7 @@ const defaultOther = () => ({ moistureContent:0.052, exchangeRate:0.70, discount
 
 // ─── HELPERS ───────────────────────────────────────────────────────────
 const FLEET_CONFIGS_KEY = "mfce_saved_fleet_configs_v1";
+const SCENARIO_CONFIGS_KEY = "mfce_saved_scenarios_v1";
 function loadFleetConfigs(){
   if(typeof window === "undefined") return [];
   try{
@@ -31,6 +32,22 @@ function saveFleetConfigs(configs){
   if(typeof window === "undefined") return;
   try{
     window.localStorage.setItem(FLEET_CONFIGS_KEY, JSON.stringify(Array.isArray(configs) ? configs : []));
+  }catch(e){}
+}
+function loadScenarioConfigs(){
+  if(typeof window === "undefined") return [];
+  try{
+    const raw = window.localStorage.getItem(SCENARIO_CONFIGS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  }catch(e){
+    return [];
+  }
+}
+function saveScenarioConfigs(configs){
+  if(typeof window === "undefined") return;
+  try{
+    window.localStorage.setItem(SCENARIO_CONFIGS_KEY, JSON.stringify(Array.isArray(configs) ? configs : []));
   }catch(e){}
 }
 const fmt = (v,d=2) => { if(v===""||v==null||isNaN(v)) return "—"; return Number(v).toLocaleString("en-AU",{minimumFractionDigits:d,maximumFractionDigits:d}); };
@@ -204,6 +221,7 @@ const PHYS_FIELDS = [
 const mkScenario = (name="New Scenario") => ({
   id: uid(), name,
   csvData: null,          // parsed CSV or null
+  csvText: "",           // raw CSV text for save/load
   csvRawLabels: [],       // detected row labels
   manualData: [           // used when no CSV
     {period:1,periodLabel:"2032/Q2",days:91,hours:2184,oreMined:0,wasteMined:77261,totalMined:77261,totalRampMined:77261,avgLoadedTravelTime:3.3,avgUnloadedTravelTime:2.5,avgTkphDelay:0,avgNetPower:255.9,oreFePct:61.5,oreSiPct:3.7,oreAlPct:2.2,orePPct:0.08},
@@ -217,6 +235,41 @@ const mkScenario = (name="New Scenario") => ({
   schedPeriod: "Quarterly",
   unitMul: 1,
 });
+
+function makeScenarioSnapshot(s){
+  return JSON.parse(JSON.stringify({
+    ...s,
+    csvData: null,
+    csvText: s.csvText || ""
+  }));
+}
+
+function restoreScenarioFromSnapshot(saved){
+  const base = JSON.parse(JSON.stringify(saved || {}));
+  const csvText = base.csvText || "";
+  const parsed = csvText ? parseGenericCSV(csvText) : null;
+  return {
+    ...mkScenario(base.name || "Loaded Scenario"),
+    ...base,
+    id: uid(),
+    csvData: parsed,
+    csvText: csvText,
+    csvRawLabels: parsed ? parsed.labels : (base.csvRawLabels || []),
+    fieldMappings: (Array.isArray(base.fieldMappings) && base.fieldMappings.length ? base.fieldMappings : mkScenario().fieldMappings).map(function(m,mi){
+      return {
+        ...m,
+        id: uid(),
+        name: m.name || m.desc || `Set ${mi+1}`,
+        desc: m.desc || m.name || `Set ${mi+1}`,
+        fields: {...(m.fields || {})}
+      };
+    }),
+    manualData: Array.isArray(base.manualData) && base.manualData.length ? base.manualData : mkScenario().manualData,
+    activeFleetIds: Array.isArray(base.activeFleetIds) ? base.activeFleetIds : [],
+    fleetPhysicalSets: base.fleetPhysicalSets || {},
+    physicalSetFleetIds: base.physicalSetFleetIds || {},
+  };
+}
 
 // ─── FLEET COMBO (global) ──────────────────────────────────────────────
 const mkFleet = (name,truckIdx=0,diggerIdx=0) => ({
@@ -261,6 +314,9 @@ export default function App(){
   const [fleetConfigName,setFleetConfigName]=useState("");
   const [savedFleetConfigs,setSavedFleetConfigs]=useState(loadFleetConfigs);
   const [selectedFleetConfig,setSelectedFleetConfig]=useState("");
+  const [scenarioConfigName,setScenarioConfigName]=useState("");
+  const [savedScenarioConfigs,setSavedScenarioConfigs]=useState(loadScenarioConfigs);
+  const [selectedScenarioConfig,setSelectedScenarioConfig]=useState("");
   const [scenarios,setScenarios]=useState([mkScenario("Scenario ST"),mkScenario("Scenario LT")]);
   const [activeScnIdx,setActiveScnIdx]=useState(0);
   const [formulaSearch,setFormulaSearch]=useState("");
@@ -280,6 +336,7 @@ export default function App(){
   const fileRef=useRef();
 
   useEffect(function(){ saveFleetConfigs(savedFleetConfigs); },[savedFleetConfigs]);
+  useEffect(function(){ saveScenarioConfigs(savedScenarioConfigs); },[savedScenarioConfigs]);
 
 
   const scn=scenarios[activeScnIdx]||scenarios[0];
@@ -291,7 +348,7 @@ export default function App(){
     const rd=new FileReader();
     rd.onload=ev=>{try{
       const parsed=parseGenericCSV(ev.target.result);
-      if(!parsed||parsed.np<1){updScn(s=>({...s,csvData:null,csvRawLabels:[]}));return}
+      if(!parsed||parsed.np<1){updScn(s=>({...s,csvData:null,csvText:"",csvRawLabels:[]}));return}
       const buildFields=function(desc){
         const rows=(parsed.labelsByDesc[desc]||parsed.labels||[]);
         const pick=function(opts){for(const o of opts){if(rows.includes(o))return o}return ""};
@@ -299,7 +356,7 @@ export default function App(){
       };
       const descs=(parsed.descs&&parsed.descs.length?parsed.descs:["Base Set"]);
       const fieldMappings=descs.map(function(desc){return {id:uid(),name:desc,desc:desc,fields:buildFields(desc)}});
-      updScn(s=>({...s,csvData:parsed,csvRawLabels:parsed.labels,fieldMappings:fieldMappings,fleetPhysicalSets:{},physicalSetFleetIds:{}}));
+      updScn(s=>({...s,csvData:parsed,csvText:ev.target.result,csvRawLabels:parsed.labels,fieldMappings:fieldMappings,fleetPhysicalSets:{},physicalSetFleetIds:{}}));
     }catch(err){console.error(err)}};
     rd.readAsText(f);
   },[activeScnIdx]);
@@ -400,6 +457,31 @@ export default function App(){
     setSavedFleetConfigs(function(prev){return (prev||[]).filter(function(x){return x.name!==selectedFleetConfig;});});
     setSelectedFleetConfig("");
   };
+  const saveCurrentScenarioConfig=()=>{
+    const name=(scenarioConfigName||scn?.name||"").trim();
+    if(!name || !scn)return;
+    const snapshot=makeScenarioSnapshot(scn);
+    setSavedScenarioConfigs(function(prev){
+      const next=(prev||[]).filter(function(x){return x.name!==name;});
+      return [{name:name,scenario:snapshot,savedAt:new Date().toISOString()}, ...next];
+    });
+    setSelectedScenarioConfig(name);
+  };
+  const loadSelectedScenarioConfig=()=>{
+    const chosen=(savedScenarioConfigs||[]).find(function(x){return x.name===selectedScenarioConfig;});
+    if(!chosen||!chosen.scenario)return;
+    const restored=restoreScenarioFromSnapshot(chosen.scenario);
+    setScenarios(function(prev){
+      const next=[...prev,restored];
+      setActiveScnIdx(next.length-1);
+      return next;
+    });
+  };
+  const deleteSelectedScenarioConfig=()=>{
+    if(!selectedScenarioConfig)return;
+    setSavedScenarioConfigs(function(prev){return (prev||[]).filter(function(x){return x.name!==selectedScenarioConfig;});});
+    setSelectedScenarioConfig("");
+  };
   const updMapping=(si,fi,fk,v)=>updScn(s=>{const m=[...s.fieldMappings];m[si]={...m[si],fields:{...m[si].fields,[fk]:v}};return{...s,fieldMappings:m}});
   const addManP=()=>updScn(s=>({...s,manualData:[...s.manualData,{period:s.manualData.length+1,periodLabel:`P${s.manualData.length+1}`,days:91,hours:2184,oreMined:0,wasteMined:0,totalMined:0,totalRampMined:0,avgLoadedTravelTime:10,avgUnloadedTravelTime:8,avgTkphDelay:0,avgNetPower:150,oreFePct:0,oreSiPct:0,oreAlPct:0,orePPct:0}]}));
   const updManP=(i,k,v)=>updScn(s=>{const d=[...s.manualData];d[i]={...d[i],[k]:v};if(k==="oreMined"||k==="wasteMined"){d[i].totalMined=(d[i].oreMined||0)+(d[i].wasteMined||0);d[i].totalRampMined=d[i].totalMined}if(k==="days")d[i].hours=v*24;return{...s,manualData:d}});
@@ -423,7 +505,7 @@ export default function App(){
     if(fallback)setFleetForPhysicalSet(setIdx,fallback.id);
   };
   const getYearLabel=(label)=>{const m=String(label||'').match(/(20\d{2})/);return m?m[1]:String(label||'').split(/[\/\-]/)[0]||String(label||'')};
-  const rollupResultRows=(rows)=>{if(chartRollup!=="year")return rows.map(function(r){return Object.assign({},r,{Ore:(r.pd?.oreMined||0)*scn.unitMul,Waste:(r.pd?.wasteMined||0)*scn.unitMul,RampBuild:(r.pd?.totalRampMined||0)*scn.unitMul,Fe:r.pd?.oreFePct||0,Si:r.pd?.oreSiPct||0,Al:r.pd?.oreAlPct||0,P:r.pd?.orePPct||0,TruckCapex:r.res?.trkCapex||0,DiggerCapex:r.res?.digCapex||0,TruckOpex:r.res?.totTrkExc||0,DiggerOpex:r.res?.digOpxTotal||0,RehandleOpex:r.res?.digRehandle||0,ChargerCapex:r.res?.chgCapex||0,BatteryCapex:r.res?.totReplBatCost||0,TruckCPT:r.res?.trkPerT||0,DiggerCPT:r.res?.digOpxPerT||0,Trucks:r.res?.trkReqR||0,Diggers:r.res?.digFleet||0,Chargers:r.res?.chgStaRnd||0})}); const m={}; rows.forEach(function(r){var y=getYearLabel(r.periodLabel); if(!m[y])m[y]={periodLabel:y,Ore:0,Waste:0,RampBuild:0,oreWt:0,Fe:0,Si:0,Al:0,P:0,TruckCapex:0,DiggerCapex:0,TruckOpex:0,DiggerOpex:0,RehandleOpex:0,ChargerCapex:0,BatteryCapex:0,TruckCPT:0,DiggerCPT:0,Trucks:0,Diggers:0,Chargers:0,Diesel:0,Maint:0,Parts:0,GET:0,Operator:0,Other:0}; var t=m[y]; var ore=(r.pd?.oreMined||0)*scn.unitMul; t.Ore+=ore; t.Waste+=(r.pd?.wasteMined||0)*scn.unitMul; t.RampBuild+=(r.pd?.totalRampMined||0)*scn.unitMul; t.oreWt+=ore; t.Fe+=ore*((r.pd?.oreFePct)||0); t.Si+=ore*((r.pd?.oreSiPct)||0); t.Al+=ore*((r.pd?.oreAlPct)||0); t.P+=ore*((r.pd?.orePPct)||0); t.TruckCapex+=r.res?.trkCapex||0; t.DiggerCapex+=r.res?.digCapex||0; t.TruckOpex+=r.res?.totTrkExc||0; t.DiggerOpex+=r.res?.digOpxTotal||0; t.RehandleOpex+=r.res?.digRehandle||0; t.ChargerCapex+=r.res?.chgCapex||0; t.BatteryCapex+=r.res?.totReplBatCost||0; t.TruckCPT+=r.res?.trkPerT||0; t.DiggerCPT+=r.res?.digOpxPerT||0; t.Trucks=Math.max(t.Trucks,r.res?.trkReqR||0); t.Diggers=Math.max(t.Diggers,r.res?.digFleet||0); t.Chargers=Math.max(t.Chargers,r.res?.chgStaRnd||0);}); return Object.values(m).map(function(t){var c=t.oreWt||1; return Object.assign(t,{Fe:t.Fe/c,Si:t.Si/c,Al:t.Al/c,P:t.P/c});});};
+  const rollupResultRows=(rows)=>{const m={}; rows.forEach(function(r){var k=chartRollup==="year"?getYearLabel(r.periodLabel):r.periodLabel; if(!m[k])m[k]={periodLabel:k,Ore:0,Waste:0,RampBuild:0,oreWt:0,Fe:0,Si:0,Al:0,P:0,TruckCapex:0,DiggerCapex:0,TruckOpex:0,DiggerOpex:0,RehandleOpex:0,ChargerCapex:0,BatteryCapex:0,TruckCPTNum:0,DiggerCPTNum:0,totalMined:0,Trucks:0,Diggers:0,Chargers:0,Diesel:0,Maint:0,Parts:0,GET:0,Operator:0,Other:0,res:null}; var t=m[k]; var ore=(r.pd?.oreMined||0)*scn.unitMul; var waste=(r.pd?.wasteMined||0)*scn.unitMul; var ramp=(r.pd?.totalRampMined||0)*scn.unitMul; var mined=(r.pd?.totalMined||0)*scn.unitMul; t.Ore+=ore; t.Waste+=waste; t.RampBuild+=ramp; t.totalMined+=mined; t.oreWt+=ore; t.Fe+=ore*((r.pd?.oreFePct)||0); t.Si+=ore*((r.pd?.oreSiPct)||0); t.Al+=ore*((r.pd?.oreAlPct)||0); t.P+=ore*((r.pd?.orePPct)||0); t.TruckCapex+=r.res?.trkCapex||0; t.DiggerCapex+=r.res?.digCapex||0; t.TruckOpex+=r.res?.totTrkExc||0; t.DiggerOpex+=r.res?.digOpxTotal||0; t.RehandleOpex+=r.res?.digRehandle||0; t.ChargerCapex+=r.res?.chgCapex||0; t.BatteryCapex+=r.res?.totReplBatCost||0; t.TruckCPTNum+=(r.res?.trkPerT||0)*mined; t.DiggerCPTNum+=(r.res?.digOpxPerT||0)*mined; t.Trucks=Math.max(t.Trucks,r.res?.trkReqR||0); t.Diggers=Math.max(t.Diggers,r.res?.digFleet||0); t.Chargers=Math.max(t.Chargers,r.res?.chgStaRnd||0); t.Diesel+=r.res?.digOpxDiesel||0; t.Maint+=r.res?.digOpxMaint||0; t.Parts+=r.res?.digOpxParts||0; t.GET+=r.res?.digOpxGET||0; t.Operator+=r.res?.digOpxOperator||0; t.Other+=(r.res?.digOpxOil||0)+(r.res?.digOpxCable||0)+(r.res?.digOpxTracks||0)+(r.res?.digOpxTires||0)+(r.res?.digOpxFMS||0)+(r.res?.digOpxBattery||0)+(r.res?.digOpxMaterials||0);}); return Object.values(m).map(function(t){var oreC=t.oreWt||1; var minedC=t.totalMined||1; return Object.assign(t,{Fe:t.Fe/oreC,Si:t.Si/oreC,Al:t.Al/oreC,P:t.P/oreC,TruckCPT:t.totalMined>0?t.TruckCPTNum/minedC:0,DiggerCPT:t.totalMined>0?t.DiggerCPTNum/minedC:0});});};
 
   const navGroups=[
     {label:"Assumptions",items:[{id:"other",label:"General",icon:"⚙️"},{id:"truck",label:"Trucks",icon:"🚛"},{id:"digger",label:"Diggers",icon:"⛏️"},{id:"charts_assumptions",label:"Charts",icon:"📈"}]},
@@ -469,11 +551,21 @@ export default function App(){
 
         {/* ══ SCENARIO MANAGER ══ */}
         {page==="scenarios"&&(<div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <ST icon="📋">Scenario Manager</ST>
-            <Btn onClick={()=>setScenarios(p=>[...p,mkScenario(`Scenario ${p.length+1}`)])} solid>+ New Scenario</Btn>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <input type="text" value={scenarioConfigName} onChange={e=>setScenarioConfigName(e.target.value)} placeholder="Scenario save name..." style={{...selS,width:180}}/>
+              <Btn onClick={saveCurrentScenarioConfig} color={P.gn} solid>Save Scenario</Btn>
+              <select value={selectedScenarioConfig} onChange={e=>setSelectedScenarioConfig(e.target.value)} style={{...selS,width:180}}>
+                <option value="">Load saved scenario...</option>
+                {savedScenarioConfigs.map(function(cfg){return <option key={cfg.name} value={cfg.name}>{cfg.name}</option>;})}
+              </select>
+              <Btn onClick={loadSelectedScenarioConfig} color={P.bl} solid>Load as New</Btn>
+              <Btn onClick={deleteSelectedScenarioConfig} color={P.rd} small>Delete</Btn>
+              <Btn onClick={()=>setScenarios(p=>[...p,mkScenario(`Scenario ${p.length+1}`)])} solid>+ New Scenario</Btn>
+            </div>
           </div>
-          <p style={{color:P.txM,fontSize:13,marginBottom:16}}>Each scenario has its own schedule data, field mappings, and active fleet selection. Switch between scenarios using the dropdown in the header. Equipment models, fleet definitions, and formulas are shared across all scenarios.</p>
+          <p style={{color:P.txM,fontSize:13,marginBottom:16}}>Each scenario has its own schedule data, field mappings, physical-set fleet assignments, schedule settings, and unit selection. Switch between scenarios using the dropdown in the header. Equipment models, fleet definitions, and formulas are shared across all scenarios.</p>
 
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(340px, 1fr))",gap:16}}>
             {scenarios.map((s,si)=>(
@@ -489,7 +581,7 @@ export default function App(){
                 </div>
                 <div style={{display:"flex",gap:8,marginTop:12}}>
                   <Btn onClick={()=>setActiveScnIdx(si)} solid={si===activeScnIdx} color={si===activeScnIdx?P.pri:P.txD} small>{si===activeScnIdx?"Active":"Select"}</Btn>
-                  <Btn onClick={()=>{const copy={...JSON.parse(JSON.stringify(s)),id:uid(),name:s.name+" (Copy)"};setScenarios(p=>[...p,copy])}} small color={P.txM}>Duplicate</Btn>
+                  <Btn onClick={()=>{const copy=restoreScenarioFromSnapshot({...makeScenarioSnapshot(s),name:s.name+" (Copy)"});setScenarios(p=>[...p,copy])}} small color={P.txM}>Duplicate</Btn>
                 </div>
               </div>
             ))}
@@ -542,7 +634,7 @@ export default function App(){
               <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleUpload} style={{color:P.tx,fontSize:12}}/>
               <select value={scn.schedPeriod} onChange={e=>updScn(s=>({...s,schedPeriod:e.target.value}))} style={selS}><option value="Yearly">Yearly</option><option value="Quarterly">Quarterly</option><option value="Monthly">Monthly</option></select>
               <select value={scn.unitMul} onChange={e=>updScn(s=>({...s,unitMul:Number(e.target.value)}))} style={selS}><option value={1}>Tonnes</option><option value={1000}>kt (×1000)</option><option value={1000000}>Mt (×1M)</option></select>
-              {scn.csvData&&<Btn color={P.rd} small onClick={()=>updScn(s=>({...s,csvData:null,csvRawLabels:[]}))}>Clear CSV</Btn>}
+              {scn.csvData&&<Btn color={P.rd} small onClick={()=>updScn(s=>({...s,csvData:null,csvText:"",csvRawLabels:[]}))}>Clear CSV</Btn>}
             </div>
             {scn.csvData&&<p style={{color:P.gn,fontSize:12,marginTop:8,fontWeight:600}}>✓ {scn.csvData.np} periods · {scn.csvRawLabels.length} rows detected. Configure field mappings in the Field Mapping tab.</p>}
           </div>
@@ -904,12 +996,19 @@ export default function App(){
                 <Legend wrapperStyle={{fontSize:11}}/>{isVis("TruckCapex")&&<Bar dataKey="TruckCapex" stackId="a" fill={mClr[0]} name="Truck Capex"/>}{isVis("DiggerCapex")&&<Bar dataKey="DiggerCapex" stackId="a" fill={mClr[1]} name="Digger Capex"/>}{isVis("TruckOpex")&&<Bar dataKey="TruckOpex" stackId="a" fill={mClr[2]} name="Truck Opex"/>}{isVis("DiggerOpex")&&<Bar dataKey="DiggerOpex" stackId="a" fill={mClr[3]} name="Digger Opex"/>}{isVis("RehandleOpex")&&<Bar dataKey="RehandleOpex" stackId="a" fill={mClr[4]} name="Rehandle Opex"/>}{isVis("ChargerCapex")&&<Bar dataKey="ChargerCapex" stackId="a" fill={mClr[5]} name="Charger Capex"/>}{isVis("BatteryCapex")&&<Bar dataKey="BatteryCapex" stackId="a" fill="#6b7280" name="Battery Capex"/>}
               </BarChart></ResponsiveContainer>
             </div>
-            {/* Fleet sizing */}
-            <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Fleet Sizing by Period</div>
-              <ResponsiveContainer width="100%" height={300}><ComposedChart data={pData.map(function(r){return{period:r.periodLabel,Trucks:r.Trucks||0,Diggers:r.Diggers||0,Chargers:r.Chargers||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
+            {/* Fleet sizing - Trucks and Chargers */}
+            <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Truck & Charger Fleet by Period</div>
+              <ResponsiveContainer width="100%" height={300}><ComposedChart data={pData.map(function(r){return{period:r.periodLabel,Trucks:r.Trucks||0,Chargers:r.Chargers||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis yAxisId="left" fontSize={10} allowDecimals={false}/><YAxis yAxisId="right" orientation="right" fontSize={10} allowDecimals={false}/><Tooltip/>
-                <Legend wrapperStyle={{fontSize:11}}/><Bar yAxisId="left" dataKey="Trucks" fill={mClr[0]}/><Bar yAxisId="left" dataKey="Diggers" fill={mClr[1]}/><Line yAxisId="right" type="monotone" dataKey="Chargers" stroke={mClr[2]} strokeWidth={2} dot={{r:3}}/>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar yAxisId="left" dataKey="Trucks" fill={mClr[0]} name="Trucks"/><Line yAxisId="right" type="monotone" dataKey="Chargers" stroke={mClr[2]} strokeWidth={2} name="Chargers" dot={{r:3}}/>
               </ComposedChart></ResponsiveContainer>
+            </div>
+            {/* Fleet sizing - Diggers */}
+            <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Digger Fleet by Period</div>
+              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,Diggers:r.Diggers||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
+                <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} allowDecimals={false}/><Tooltip/>
+                <Legend wrapperStyle={{fontSize:11}}/><Bar dataKey="Diggers" fill={mClr[1]} name="Diggers"/>
+              </BarChart></ResponsiveContainer>
             </div>
             {/* Cost split pie */}
             <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Cost Split — Digger vs Truck</div>

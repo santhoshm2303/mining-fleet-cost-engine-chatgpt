@@ -9,8 +9,8 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Cart
 let _id = 100; const uid = () => "m" + (++_id);
 
 // ─── MODEL FACTORIES ───────────────────────────────────────────────────
-const mkTruck = (ov={}) => ({ id: uid(), truckName:"XCMG XGE150 Plus 10YMP", payload:85, powerSource:"Battery - Charge", batterySize:828, economicLife:80000, tkphLimit:254.2, availability:0.86, useOfAvailability:0.96, operatingEfficiency:0.79, utToSmuConversion:1.06, spotTimeLoad:0.46, queueTimeLoad:0, spotTimeDump:0.5, queueTimeDump:0, dumpTime:0.5, performanceEfficiency:0.99, totalTruckCapex:2185181.43, capexPerSmuHour:27.31, powerSystemCost:383890, opexPerSmuHour:156.54, operatorRate:133, nominalBatteryCapacityNew:828, averageBatteryUsableCapacity:563.04, travelToRechargeEnergy:10, travelToSwapChargerStationTime:2.96, chargerQueueTime:0, chargerConnectionPositioningTime:0, equivalentFullLifeCycles:4500, chargingTime:50, rechargeRateC:1.2, swapTotalSwapTime:14.5, chargerOperatingTime:6740.82, demandResponseAllowance:0, numBatteriesPerStation:1, totalChargerCapex:4703194.09, avgChargerEffectiveHours:6740.82, totalChargerOandO:70.19, ...ov });
-const mkTruckL = () => mkTruck({ truckName:"Liebherr BET264 10ymp", payload:240, batterySize:2580, economicLife:84000, tkphLimit:1400, availability:0.88, useOfAvailability:0.936, operatingEfficiency:0.803, spotTimeLoad:0.46, queueTimeLoad:0, spotTimeDump:0.5, queueTimeDump:0, dumpTime:1.0, totalTruckCapex:11198255.71, capexPerSmuHour:133.31, powerSystemCost:2313980, opexPerSmuHour:478.80, nominalBatteryCapacityNew:2580, averageBatteryUsableCapacity:2037.5, travelToRechargeEnergy:17.4, equivalentFullLifeCycles:5950, chargingTime:33.18, rechargeRateC:2.0, totalChargerCapex:9722830, totalChargerOandO:143.25 });
+const mkTruck = (ov={}) => ({ id: uid(), truckName:"XCMG XGE150 Plus 10YMP", payload:85, powerSource:"Battery - Charge", batterySize:828, economicLife:80000, tkphLimit:254.2, availability:0.86, useOfAvailability:0.96, operatingEfficiency:0.79, utToSmuConversion:1.06, spotTimeLoad:0.46, queueTimeLoad:0, spotTimeDump:0.5, queueTimeDump:0, dumpTime:0.5, performanceEfficiency:0.99, totalTruckCapex:2185181.43, capexPerSmuHour:27.31, powerSystemCost:383890, opexPerSmuHour:156.54, operatorRate:133, nominalBatteryCapacityNew:828, averageBatteryUsableCapacity:563.04, travelToRechargeEnergy:10, travelToSwapChargerStationTime:2.96, chargerQueueTime:0, chargerConnectionPositioningTime:0, equivalentFullLifeCycles:4500, chargingTime:50, rechargeRateC:1.2, swapTotalSwapTime:14.5, chargerOperatingTime:6740.82, chargerLifeHours:60000, demandResponseAllowance:0, numBatteriesPerStation:1, totalChargerCapex:4703194.09, avgChargerEffectiveHours:6740.82, totalChargerOandO:70.19, batteryReplacementCost:383890, ...ov });
+const mkTruckL = () => mkTruck({ truckName:"Liebherr BET264 10ymp", payload:240, batterySize:2580, economicLife:84000, tkphLimit:1400, availability:0.88, useOfAvailability:0.936, operatingEfficiency:0.803, spotTimeLoad:0.46, queueTimeLoad:0, spotTimeDump:0.5, queueTimeDump:0, dumpTime:1.0, totalTruckCapex:11198255.71, capexPerSmuHour:133.31, powerSystemCost:2313980, opexPerSmuHour:478.80, nominalBatteryCapacityNew:2580, averageBatteryUsableCapacity:2037.5, travelToRechargeEnergy:17.4, equivalentFullLifeCycles:5950, chargingTime:33.18, rechargeRateC:2.0, chargerLifeHours:60000, totalChargerCapex:9722830, totalChargerOandO:143.25, batteryReplacementCost:2313980 });
 const mkDigger = (ov={}) => ({ id: uid(), diggerName:"300t Cable Electric Backhoe", powerSource:"Cable Electric", availability:0.90, useOfAvailability:0.83, operatingEfficiency:0.38, utToSmuConversion:1.03, equipmentLife:80000, effectiveTime:2487, effectiveDigRate:2800, totalCapex:8995710, capexPerSmuHour:112.45, dieselElectricityCost:86.6, maintenanceLabour:91, oilAndCoolant:12.6, partsComponentsPM05:223, materialsConsumables:0, get:76.5, cableCost:2.4, tracks:0, tires:0, fmsLicenseFee:42.99, batteryReplacement:0, operatorCost:130, rehandleCostPerTonne:1.13, ...ov });
 const mkDigger4 = () => mkDigger({ diggerName:"400t Cable Electric Backhoe", effectiveDigRate:5100, totalCapex:13698717.31, capexPerSmuHour:171.23, dieselElectricityCost:108.21, oilAndCoolant:21, partsComponentsPM05:304, get:90 });
 const defaultOther = () => ({ moistureContent:0.052, exchangeRate:0.70, discountRate:0.115, electricityCost:0.1443, dieselCost:0.9102, allInFitterPerYear:182, mannedOperator:133, calendarTime:8760, diggerFleetRoundingThreshold:0.5 });
@@ -168,6 +168,128 @@ function calcWithFormulas(inp,formulas){
   return results;
 }
 
+
+function applyAssetLifecycle(baseRows, trucks){
+  const chargerStates = {};
+  const truckStates = {};
+  const batteryStates = {};
+  let nextChargerId = 1;
+  let nextTruckId = 1;
+  let nextBatteryId = 1;
+
+  function getKey(row){
+    return `${row.setIdx}||${row.fleet?.id || row.fleetName || "fleet"}`;
+  }
+
+  return baseRows.map(function(row){
+    const res = row.res || {};
+    const truck = row.fleet ? (trucks[row.fleet.truckIdx] || {}) : {};
+    const key = getKey(row);
+    if(!chargerStates[key]) chargerStates[key] = [];
+    if(!truckStates[key]) truckStates[key] = [];
+    if(!batteryStates[key]) batteryStates[key] = [];
+
+    const chargers = chargerStates[key];
+    const truckAssets = truckStates[key];
+    const batteries = batteryStates[key];
+
+    const requiredTrucks = Math.max(0, Math.ceil(res.trkReqR || 0));
+    const requiredChargers = Math.max(0, Math.ceil(res.chgStaRnd || 0));
+    const truckUnitCapex = Number(truck.totalTruckCapex || 0);
+    const chargerUnitCapex = Number(truck.totalChargerCapex || 0);
+    const chargerLifeHours = Math.max(1, Number(truck.chargerLifeHours || truck.chargerOperatingTime || 60000));
+    const batteryCycleLife = Math.max(1, Number(truck.equivalentFullLifeCycles || 3000));
+    const batteryReplacementCost = Number(truck.batteryReplacementCost || truck.powerSystemCost || 0);
+    const cyclesPerTruck = Math.max(0, Number(res.eqLifeCycPer || 0));
+    const totalChargingHours = Math.max(0, Number(res.chgHrsReq || 0));
+
+    let truckCapex = 0;
+    let chargerCapex = 0;
+    let batteryCapex = 0;
+    let truckPurchases = 0;
+    let chargerPurchases = 0;
+    let chargerReplacements = 0;
+    let batteryReplacements = 0;
+
+    while(truckAssets.length < requiredTrucks){
+      const truckId = `TRK-${nextTruckId++}`;
+      truckAssets.push({id: truckId});
+      truckCapex += truckUnitCapex;
+      truckPurchases += 1;
+      batteries.push({id: `BAT-${nextBatteryId++}`, truckId: truckId, cycles: 0});
+    }
+
+    while(chargers.length < requiredChargers){
+      chargers.push({id: `CHG-${nextChargerId++}`, hours: 0});
+      chargerCapex += chargerUnitCapex;
+      chargerPurchases += 1;
+    }
+
+    if(chargers.length > 0 && totalChargingHours > 0){
+      const hoursPerCharger = totalChargingHours / chargers.length;
+      chargers.forEach(function(ch){
+        ch.hours += hoursPerCharger;
+        while(ch.hours >= chargerLifeHours){
+          ch.hours -= chargerLifeHours;
+          chargerCapex += chargerUnitCapex;
+          chargerReplacements += 1;
+        }
+      });
+    }
+
+    if(batteries.length > 0 && cyclesPerTruck > 0){
+      batteries.forEach(function(b){
+        b.cycles += cyclesPerTruck;
+        while(b.cycles >= batteryCycleLife){
+          b.cycles -= batteryCycleLife;
+          batteryCapex += batteryReplacementCost;
+          batteryReplacements += 1;
+        }
+      });
+    }
+
+    const oldBatteryReplacement = Number(res.totReplBatCost || 0);
+    const mined = Number(row.pd?.totalMined || 0) * Number(row.unitMul || 1);
+    const adjTotTrkExc = Math.max(0, Number(res.totTrkExc || 0) - oldBatteryReplacement);
+    const adjTotExc = Math.max(0, Number(res.totExc || 0) - oldBatteryReplacement);
+    const adjTotCost = Math.max(0, Number(res.totCost || 0) - oldBatteryReplacement + batteryCapex);
+
+    const adjRes = {
+      ...res,
+      trkCapex: truckCapex,
+      chgCapex: chargerCapex,
+      totReplBatCost: batteryCapex,
+      totTrkExc: adjTotTrkExc,
+      trkPerTExc: mined > 0 ? adjTotTrkExc / mined : 0,
+      totExc: adjTotExc,
+      totPerTExc: mined > 0 ? adjTotExc / mined : 0,
+      totCost: adjTotCost,
+      totPerT: mined > 0 ? adjTotCost / mined : 0,
+      assetTruckPurchases: truckPurchases,
+      assetTruckInstalled: truckAssets.length,
+      assetChargerPurchases: chargerPurchases,
+      assetChargerReplacements: chargerReplacements,
+      assetChargersInstalled: chargers.length,
+      assetBatteryReplacements: batteryReplacements,
+      assetBatteriesInstalled: batteries.length
+    };
+
+    return {
+      ...row,
+      res: adjRes,
+      assetSummary: {
+        truckPurchases,
+        chargerPurchases,
+        chargerReplacements,
+        batteryReplacements,
+        trucksInstalled: truckAssets.length,
+        chargersInstalled: chargers.length,
+        batteriesInstalled: batteries.length
+      }
+    };
+  });
+}
+
 // ─── GENERIC CSV PARSER ────────────────────────────────────────────────
 function parseCSV(text){return text.split(/\r?\n/).filter(l=>l.trim()).map(l=>{const c=[];let cur="",q=false;for(let i=0;i<l.length;i++){if(l[i]==='"')q=!q;else if(l[i]===','&&!q){c.push(cur.trim());cur=""}else cur+=l[i]}c.push(cur.trim());return c})}
 function parseGenericCSV(text){
@@ -299,7 +421,7 @@ const CompRow=({label,field,models,onChange,unit,type="number",step,section,pref
   </tr>);
 };
 
-const truckRows=[{section:true,label:"Identity & TUM"},{field:"truckName",label:"Truck Name",type:"text"},{field:"payload",label:"Payload",unit:"t"},{field:"powerSource",label:"Power Source",type:"text"},{field:"availability",label:"Availability",unit:"%",step:0.01},{field:"useOfAvailability",label:"Use of Availability",unit:"%",step:0.01},{field:"operatingEfficiency",label:"Operating Efficiency",unit:"%",step:0.01},{field:"utToSmuConversion",label:"UT → SMU",unit:"#"},{field:"performanceEfficiency",label:"Perf Efficiency",unit:"%",step:0.01},{section:true,label:"Spot / Queue / Dump Times"},{field:"spotTimeLoad",label:"Spot Time at Load",unit:"min"},{field:"queueTimeLoad",label:"Queue Time at Load",unit:"min"},{field:"spotTimeDump",label:"Spot Time at Dump",unit:"min"},{field:"queueTimeDump",label:"Queue Time at Dump",unit:"min"},{field:"dumpTime",label:"Dump Time",unit:"min"},{section:true,label:"Capital Expenditure"},{field:"totalTruckCapex",label:"Total Capex",unit:"AUD",step:1000},{field:"capexPerSmuHour",label:"Capex/SMU Hr",unit:"$/SMU"},{field:"powerSystemCost",label:"Power System",unit:"AUD",step:1000},{section:true,label:"Operating Expenditure"},{field:"opexPerSmuHour",label:"Opex/SMU Hr",unit:"$/hr"},{field:"operatorRate",label:"Operator Rate",unit:"$/SMU"},{section:true,label:"Charging"},{field:"nominalBatteryCapacityNew",label:"Nom Battery Cap",unit:"kWh"},{field:"averageBatteryUsableCapacity",label:"Avg Usable Cap",unit:"kWh"},{field:"travelToRechargeEnergy",label:"Travel Rchg Energy",unit:"kWh"},{field:"travelToSwapChargerStationTime",label:"Travel to Charger",unit:"min"},{field:"chargerQueueTime",label:"Queue Time",unit:"min"},{field:"chargerConnectionPositioningTime",label:"Connection Time",unit:"min"},{field:"equivalentFullLifeCycles",label:"Equiv Life Cycles",unit:"#"},{field:"chargingTime",label:"Charging Time",unit:"min"},{field:"rechargeRateC",label:"Recharge Rate",unit:"C"},{section:true,label:"Charger Infrastructure"},{field:"chargerOperatingTime",label:"Charger Op Time",unit:"hrs"},{field:"demandResponseAllowance",label:"Demand Resp %",unit:"%",step:0.01},{field:"numBatteriesPerStation",label:"Batteries/Station",unit:"#"},{field:"totalChargerCapex",label:"Charger Capex",unit:"AUD",step:1000},{field:"avgChargerEffectiveHours",label:"Avg Charger Eff Hrs",unit:"hrs"},{field:"totalChargerOandO",label:"Charger O&O",unit:"$/SMU"}];
+const truckRows=[{section:true,label:"Identity & TUM"},{field:"truckName",label:"Truck Name",type:"text"},{field:"payload",label:"Payload",unit:"t"},{field:"powerSource",label:"Power Source",type:"text"},{field:"availability",label:"Availability",unit:"%",step:0.01},{field:"useOfAvailability",label:"Use of Availability",unit:"%",step:0.01},{field:"operatingEfficiency",label:"Operating Efficiency",unit:"%",step:0.01},{field:"utToSmuConversion",label:"UT → SMU",unit:"#"},{field:"performanceEfficiency",label:"Perf Efficiency",unit:"%",step:0.01},{section:true,label:"Spot / Queue / Dump Times"},{field:"spotTimeLoad",label:"Spot Time at Load",unit:"min"},{field:"queueTimeLoad",label:"Queue Time at Load",unit:"min"},{field:"spotTimeDump",label:"Spot Time at Dump",unit:"min"},{field:"queueTimeDump",label:"Queue Time at Dump",unit:"min"},{field:"dumpTime",label:"Dump Time",unit:"min"},{section:true,label:"Capital Expenditure"},{field:"totalTruckCapex",label:"Total Capex",unit:"AUD",step:1000},{field:"capexPerSmuHour",label:"Capex/SMU Hr",unit:"$/SMU"},{field:"powerSystemCost",label:"Power System",unit:"AUD",step:1000},{section:true,label:"Operating Expenditure"},{field:"opexPerSmuHour",label:"Opex/SMU Hr",unit:"$/hr"},{field:"operatorRate",label:"Operator Rate",unit:"$/SMU"},{section:true,label:"Charging"},{field:"nominalBatteryCapacityNew",label:"Nom Battery Cap",unit:"kWh"},{field:"averageBatteryUsableCapacity",label:"Avg Usable Cap",unit:"kWh"},{field:"travelToRechargeEnergy",label:"Travel Rchg Energy",unit:"kWh"},{field:"travelToSwapChargerStationTime",label:"Travel to Charger",unit:"min"},{field:"chargerQueueTime",label:"Queue Time",unit:"min"},{field:"chargerConnectionPositioningTime",label:"Connection Time",unit:"min"},{field:"equivalentFullLifeCycles",label:"Equiv Life Cycles",unit:"#"},{field:"chargingTime",label:"Charging Time",unit:"min"},{field:"rechargeRateC",label:"Recharge Rate",unit:"C"},{section:true,label:"Charger Infrastructure"},{field:"chargerOperatingTime",label:"Charger Op Time",unit:"hrs"},{field:"chargerLifeHours",label:"Charger Life",unit:"hrs"},{field:"demandResponseAllowance",label:"Demand Resp %",unit:"%",step:0.01},{field:"numBatteriesPerStation",label:"Batteries/Station",unit:"#"},{field:"totalChargerCapex",label:"Charger Capex",unit:"AUD",step:1000},{field:"avgChargerEffectiveHours",label:"Avg Charger Eff Hrs",unit:"hrs"},{field:"totalChargerOandO",label:"Charger O&O",unit:"$/SMU"},{field:"batteryReplacementCost",label:"Battery Replacement Cost",unit:"AUD",step:1000}];
 const diggerRows=[{section:true,label:"Identity & TUM"},{field:"diggerName",label:"Digger Name",type:"text"},{field:"powerSource",label:"Power Source",type:"text"},{field:"effectiveDigRate",label:"Eff Dig Rate",unit:"t/hr",step:100},{field:"availability",label:"Availability",unit:"%",step:0.01},{field:"useOfAvailability",label:"Use of Availability",unit:"%",step:0.01},{field:"operatingEfficiency",label:"Op Efficiency",unit:"%",step:0.01},{field:"utToSmuConversion",label:"UT → SMU",unit:"#"},{field:"equipmentLife",label:"Equip Life",unit:"hrs"},{field:"effectiveTime",label:"Eff Time",unit:"hrs"},{section:true,label:"Capital Expenditure"},{field:"totalCapex",label:"Total Capex",unit:"AUD",step:10000},{field:"capexPerSmuHour",label:"Capex/SMU",unit:"$/SMU"},{section:true,label:"Operating Expenditure (per SMU)"},{field:"dieselElectricityCost",label:"Diesel/Elec",unit:"$/SMU"},{field:"maintenanceLabour",label:"Maint Labour",unit:"$/SMU"},{field:"oilAndCoolant",label:"Oil & Coolant",unit:"$/SMU"},{field:"partsComponentsPM05",label:"Parts PM05",unit:"$/SMU"},{field:"materialsConsumables",label:"Materials",unit:"$/SMU"},{field:"get",label:"GET",unit:"$/SMU"},{field:"cableCost",label:"Cable Cost",unit:"$/SMU"},{field:"tracks",label:"Tracks",unit:"$/SMU"},{field:"tires",label:"Tires",unit:"$/SMU"},{field:"fmsLicenseFee",label:"FMS License",unit:"$/SMU"},{field:"batteryReplacement",label:"Battery Repl",unit:"$/SMU"},{field:"operatorCost",label:"Operator",unit:"$/SMU"},{field:"rehandleCostPerTonne",label:"Rehandle $/t",unit:"$/t"}];
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -412,10 +534,10 @@ export default function App(){
         const pd=getPdForSet(pi,row.setIdx);if(!pd||!fleet)continue;
         const ti=Math.min(fleet.truckIdx,trucks.length-1),di=Math.min(fleet.diggerIdx,diggers.length-1);
         const res=calcWithFormulas({totalMined:(pd.totalMined||0)*scn.unitMul,oreMined:(pd.oreMined||0)*scn.unitMul,totalRampMined:(pd.totalRampMined||pd.totalMined||0)*scn.unitMul,avgLoadedTravelTime:pd.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd.avgUnloadedTravelTime||0,avgNetPower:pd.avgNetPower||0,avgTkphDelay:pd.avgTkphDelay||0,schedPeriod:scn.schedPeriod,calendarDays:pd.days||91,calendarHours:pd.hours||2184,truck:trucks[ti],digger:diggers[di],other:otherA,fleet:fleet},formulas);
-        all.push({pi,setIdx:row.setIdx,setName:(row.mapping&& (row.mapping.name||row.mapping.desc)) || `Set ${row.setIdx+1}`,periodLabel:pd.periodLabel||`P${pi+1}`,fleet,fleetName:fleet.name,truckName:trucks[ti]?.truckName,diggerName:diggers[di]?.diggerName,equipKey:`${fleet.truckIdx}-${fleet.diggerIdx}`,res,pd});
+        all.push({pi,setIdx:row.setIdx,setName:(row.mapping&& (row.mapping.name||row.mapping.desc)) || `Set ${row.setIdx+1}`,periodLabel:pd.periodLabel||`P${pi+1}`,fleet,fleetName:fleet.name,truckName:trucks[ti]?.truckName,diggerName:diggers[di]?.diggerName,equipKey:`${fleet.truckIdx}-${fleet.diggerIdx}`,res,pd,unitMul:scn.unitMul});
       }
     }
-    return all;
+    return applyAssetLifecycle(all, trucks);
   },[numPeriods,activeAssignments,trucks,diggers,otherA,formulas,scn,getPdForSet]);
 
   const equipGroups=useMemo(()=>{

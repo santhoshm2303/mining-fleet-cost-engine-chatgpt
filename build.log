@@ -1,0 +1,5 @@
+
+> mining-fleet-cost-engine@1.0.0 build
+> CI=false react-scripts build
+
+sh: 1: react-scripts: not found

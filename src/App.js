@@ -632,7 +632,7 @@ export default function App(){
   const navGroups=[
     {label:"Assumptions",items:[{id:"other",label:"General",icon:"⚙️"},{id:"truck",label:"Trucks",icon:"🚛"},{id:"digger",label:"Diggers",icon:"⛏️"},{id:"charts_assumptions",label:"Charts",icon:"📈"}]},
     {label:"Setup",items:[{id:"formulas",label:"Formulas",icon:"🧮"},{id:"fleets",label:"Fleet Combos",icon:"🏗️"},{id:"charts_setup",label:"Charts",icon:"📈"}]},
-    {label:"Scenario Manager",items:[{id:"scenarios",label:"Scenarios",icon:"📋"},{id:"schedule",label:"Schedule",icon:"📅"},{id:"mapping",label:"Field Mapping",icon:"🔗"},{id:"results",label:"Results",icon:"📊"},{id:"charts_results",label:"Charts",icon:"📈"}]},
+    {label:"Scenario Manager",items:[{id:"scenarios",label:"Scenarios",icon:"📋"},{id:"results",label:"Results",icon:"📊"},{id:"charts_results",label:"Charts",icon:"📈"}]},
     {label:"Compare",items:[{id:"comparison",label:"Comparison",icon:"⚖️"},{id:"charts_compare",label:"Charts",icon:"📈"}]},
   ];
   const activeGroup=navGroups.find(g=>g.items.some(i=>i.id===page))||navGroups[0];
@@ -701,6 +701,15 @@ export default function App(){
                   <div>🔗 {s.fieldMappings.length} physical set{s.fieldMappings.length>1?"s":""}</div>
                   <div>⏱️ {s.schedPeriod} · {s.unitMul===1?"Tonnes":s.unitMul===1000?"kt":"Mt"}</div>
                 </div>
+                {si===activeScnIdx&&<div style={{marginTop:12,padding:12,background:P.input,border:`1px solid ${P.bd}`,borderRadius:8}}>
+                  <div style={{fontSize:12,fontWeight:700,color:P.pri,marginBottom:8}}>Schedule</div>
+                  <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                    <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleUpload} style={{color:P.tx,fontSize:12,maxWidth:180}}/>
+                    <select value={s.schedPeriod} onChange={e=>setScenarios(p=>{const n=[...p];n[si]={...n[si],schedPeriod:e.target.value};return n})} style={{...selS,minWidth:110}}><option value="Yearly">Yearly</option><option value="Quarterly">Quarterly</option><option value="Monthly">Monthly</option></select>
+                    <select value={s.unitMul} onChange={e=>setScenarios(p=>{const n=[...p];n[si]={...n[si],unitMul:Number(e.target.value)};return n})} style={{...selS,minWidth:110}}><option value={1}>Tonnes</option><option value={1000}>kt</option><option value={1000000}>Mt</option></select>
+                    {s.csvData&&<Btn color={P.rd} small onClick={()=>setScenarios(p=>{const n=[...p];n[si]={...n[si],csvData:null,csvText:"",csvRawLabels:[]};return n})}>Clear CSV</Btn>}
+                  </div>
+                </div>}
                 <div style={{display:"flex",gap:8,marginTop:12}}>
                   <Btn onClick={()=>setActiveScnIdx(si)} solid={si===activeScnIdx} color={si===activeScnIdx?P.pri:P.txD} small>{si===activeScnIdx?"Active":"Select"}</Btn>
                   <Btn onClick={()=>{const copy=restoreScenarioFromSnapshot({...makeScenarioSnapshot(s),name:s.name+" (Copy)"});setScenarios(p=>[...p,copy])}} small color={P.txM}>Duplicate</Btn>
@@ -708,6 +717,22 @@ export default function App(){
               </div>
             ))}
           </div>
+
+          {!scn.csvData&&(<div>
+            <ST icon="✏️">Manual Schedule Entry — {scn.name}</ST>
+            <div style={{...cardS,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
+              <thead><tr style={{background:P.secBg,borderBottom:"2px solid "+P.bdS}}>
+                {["#","Period","Days","Hrs","Ore","Waste","Total","Ramp","LoadTT","UnloadTT","TKPH","NetPwr","Fe%","Si%","Al%","P%"].map(function(h,i){return <th key={i} style={Object.assign({},thS,{textAlign:i>3?"right":"left"})}>{h}</th>})}
+                <th/>
+              </tr></thead>
+              <tbody>{scn.manualData.map(function(p,idx){return(<tr key={idx} style={{borderBottom:"1px solid "+P.bd,background:idx%2?P.input+"55":"transparent"}}>
+                <td style={{padding:"6px 8px",color:P.txD}}>{p.period}</td>
+                {[["periodLabel","t"],["days","n"],["hours","n"],["oreMined","n"],["wasteMined","n"],["totalMined","n"],["totalRampMined","n"],["avgLoadedTravelTime","n"],["avgUnloadedTravelTime","n"],["avgTkphDelay","n"],["avgNetPower","n"],["oreFePct","n"],["oreSiPct","n"],["oreAlPct","n"],["orePPct","n"]].map(function(arr){var k=arr[0],t=arr[1];return(<td key={k} style={{padding:"4px 5px"}}><input type={t==="t"?"text":"number"} value={p[k]||0} onChange={function(e){updManP(idx,k,t==="t"?e.target.value:parseFloat(e.target.value)||0)}} style={{width:t==="t"?70:65,padding:"4px 6px",background:P.input,border:"1px solid "+P.bd,borderRadius:5,color:k==="totalMined"?P.pri:P.tx,fontFamily:mf,fontSize:11,textAlign:t==="t"?"left":"right",fontWeight:k==="totalMined"?700:400}}/></td>)})}
+                <td>{scn.manualData.length>1&&<button onClick={function(){updScn(function(s){return Object.assign({},s,{manualData:s.manualData.filter(function(_,i){return i!==idx})})})}} style={{background:P.rdBg,border:"1px solid "+P.rd+"22",borderRadius:5,color:P.rd,cursor:"pointer",padding:"2px 8px"}}>×</button>}</td>
+              </tr>)})}</tbody>
+            </table></div>
+            <div style={{marginTop:12,marginBottom:18}}><Btn onClick={addManP} solid>+ Add Period</Btn></div>
+          </div>)}
 
           {/* Fleet Configuration for Active Scenario */}
           <ST icon="🏗️">Fleet Configuration — {scn.name}</ST>
@@ -745,6 +770,52 @@ export default function App(){
               })}</tbody>
             </table>
           </div>
+
+          {scn.csvData&&(<div style={{marginTop:18}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <ST icon="📋">Imported Data Preview</ST>
+              <Btn onClick={()=>togSec("scenarioPreview")} small color={P.txD}>{collSec.scenarioPreview?"Expand":"Collapse"}</Btn>
+            </div>
+            {!collSec.scenarioPreview&&<div style={{...cardS,overflowX:"auto",maxHeight:500,overflowY:"auto"}}>
+              <table style={{borderCollapse:"collapse",fontFamily:mf,fontSize:11,width:"100%"}}>
+                <thead><tr style={{background:P.secBg,borderBottom:"2px solid "+P.bdS,position:"sticky",top:0,zIndex:2}}>
+                  <th style={Object.assign({},thS,{position:"sticky",left:0,background:P.secBg,zIndex:4,minWidth:120})}>Desc</th><th style={Object.assign({},thS,{position:"sticky",left:120,background:P.secBg,zIndex:3,minWidth:200})}>Row Label</th>
+                  {Array.from({length:scn.csvData.np},function(_,i){return <th key={i} style={Object.assign({},thS,{textAlign:"right",minWidth:90})}>{scn.csvData.gs("Period",i)||("P"+(i+1))}</th>})}
+                </tr></thead>
+                <tbody>{(scn.csvData.descs&&scn.csvData.descs.length?scn.csvData.descs.flatMap(function(desc){return (scn.csvData.labelsByDesc[desc]||[]).map(function(label){return {desc:desc,label:label}})}):scn.csvRawLabels.map(function(label){return {desc:"Base Set",label:label}})).map(function(row,ri){
+                  var label=row.label,desc=row.desc;return(<tr key={ri} style={{borderBottom:"1px solid "+P.bd,background:ri%2?P.input+"44":"transparent"}}>
+                    <td style={{padding:"4px 10px",color:P.txD,fontSize:11,fontWeight:600,position:"sticky",left:0,background:ri%2?P.input+"44":P.card,zIndex:2,whiteSpace:"nowrap"}}>{desc}</td>
+                    <td style={{padding:"4px 10px",color:P.txM,fontSize:11,fontWeight:500,position:"sticky",left:120,background:ri%2?P.input+"44":P.card,zIndex:1,whiteSpace:"nowrap"}}>{label}</td>
+                    {Array.from({length:scn.csvData.np},function(_,pi){var v=scn.csvData.gv(desc,label,pi);var s=scn.csvData.gs(desc,label,pi);return <td key={pi} style={{padding:"4px 8px",textAlign:"right",color:v!==0?P.tx:P.txD,fontSize:11}}>{s||"—"}</td>})}
+                  </tr>);
+                })}</tbody>
+              </table>
+            </div>}
+          </div>)}
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:18}}>
+            <ST icon="🔗">Field Mapping — {scn.name}</ST>
+            <Btn onClick={()=>updScn(s=>({...s,fieldMappings:[...s.fieldMappings,{id:uid(),name:`Set ${s.fieldMappings.length+1}`,desc:`Set ${s.fieldMappings.length+1}`,fields:PHYS_FIELDS.reduce((a,f)=>({...a,[f.key]:""}),{})}]}))} solid>+ Add Physical Set</Btn>
+          </div>
+          <div style={{...cardS,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
+            <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}>
+              <th style={{...thS,minWidth:180}}>Calc Input</th><th style={{...thS,minWidth:45}}>Unit</th>
+              {scn.fieldMappings.map((m,mi)=>(<th key={m.id} style={{...thS,minWidth:200}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"space-between"}}>
+                  <input type="text" value={m.name} onChange={e=>updScn(s=>{const fm=[...s.fieldMappings];fm[mi]={...fm[mi],name:e.target.value,desc:e.target.value};return{...s,fieldMappings:fm}})} style={{padding:"4px 8px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:5,color:mClr[mi%mClr.length],fontFamily:ff,fontSize:12,fontWeight:700,width:120}}/><div style={{fontSize:10,color:P.txD,marginTop:4}}>Desc: {m.desc||m.name}</div>
+                  {scn.fieldMappings.length>1&&<button onClick={()=>updScn(s=>({...s,fieldMappings:s.fieldMappings.filter((_,i)=>i!==mi)}))} style={{background:P.rdBg,border:`1px solid ${P.rd}22`,borderRadius:4,color:P.rd,cursor:"pointer",padding:"2px 6px",fontSize:11}}>×</button>}
+                </div>
+              </th>))}
+            </tr></thead>
+            <tbody>{PHYS_FIELDS.map(pf=>(<tr key={pf.key} style={{borderBottom:`1px solid ${P.bd}`}}>
+              <td style={{padding:"8px 14px",color:P.txM,fontWeight:500}}>{pf.label}</td>
+              <td style={{padding:"8px 8px",color:P.txD,fontSize:11,fontFamily:mf}}>{pf.unit}</td>
+              {scn.fieldMappings.map((m,mi)=>(<td key={m.id} style={{padding:"4px 6px"}}>
+                {scn.csvData?(<select value={m.fields[pf.key]||""} onChange={e=>updMapping(mi,0,pf.key,e.target.value)} style={{...selS,width:"100%",minWidth:160,color:m.fields[pf.key]?P.tx:P.txD}}><option value="">— Select row —</option>{((scn.csvData.labelsByDesc&&scn.csvData.labelsByDesc[m.desc||m.name])||scn.csvRawLabels).map(l=><option key={l} value={l}>{l}</option>)}</select>)
+                :(<input type="text" value={m.fields[pf.key]||""} onChange={e=>updMapping(mi,0,pf.key,e.target.value)} placeholder="CSV row label..." style={{width:"100%",minWidth:160,padding:"6px 10px",background:P.input,border:`1px solid ${P.bd}`,borderRadius:6,color:P.tx,fontFamily:ff,fontSize:12}}/>)}
+              </td>))}
+            </tr>))}</tbody>
+          </table></div>
 
         </div>)}
 

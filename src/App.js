@@ -541,8 +541,16 @@ export default function App(){
   },[numPeriods,activeAssignments,trucks,diggers,otherA,formulas,scn,getPdForSet]);
 
   const equipGroups=useMemo(()=>{
-    const g={};for(const r of results){if(!g[r.equipKey])g[r.equipKey]={key:r.equipKey,truckName:r.truckName,diggerName:r.diggerName,fleetNames:[],results:[]};if(!g[r.equipKey].fleetNames.includes(r.fleetName))g[r.equipKey].fleetNames.push(r.fleetName);g[r.equipKey].results.push(r)}
-    return Object.values(g);
+    const g={};
+    for(const r of results){
+      const gk=`${r.equipKey}-${r.setIdx}-${r.fleetName}`;
+      if(!g[gk])g[gk]={key:gk,truckName:r.truckName,diggerName:r.diggerName,fleetNames:[r.fleetName],setIdx:r.setIdx,setName:r.setName,results:[]};
+      g[gk].results.push(r);
+    }
+    return Object.values(g).map(function(grp){
+      grp.results=grp.results.slice().sort(function(a,b){return (a.pi||0)-(b.pi||0)});
+      return grp;
+    });
   },[results]);
 
   const totals=useMemo(()=>{const t={m:0,c:0};results.forEach(r=>{if(!r.res)return;t.m+=(r.pd?.totalMined||0)*scn.unitMul;t.c+=r.res.totCost||0});t.cpt=t.m>0?t.c/t.m:0;return t},[results,scn.unitMul]);
@@ -943,7 +951,7 @@ export default function App(){
           {equipGroups.length===0?<p style={{color:P.txD}}>No results. Check schedule data and active fleets.</p>:equipGroups.map(grp=>(<div key={grp.key} style={{marginBottom:28}}>
             <div style={{padding:"10px 16px",background:P.priBg,borderRadius:"8px 8px 0 0",border:`1px solid ${P.pri}22`,borderBottom:"none"}}>
               <span style={{color:P.pri,fontWeight:700,fontSize:14}}>{grp.truckName} + {grp.diggerName}</span>
-              <span style={{color:P.txD,fontSize:12,marginLeft:12}}>({grp.fleetNames.join(" + ")})</span>
+              <span style={{color:P.txD,fontSize:12,marginLeft:12}}>({grp.fleetNames.join(" + ")} · {grp.setName})</span>
             </div>
             <div style={{...cardS,borderTopLeftRadius:0,borderTopRightRadius:0,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%",minWidth:600}}>
               <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}>
@@ -1213,7 +1221,7 @@ export default function App(){
             </div>
             {/* Digger opex stacked full width */}
             <div style={Object.assign({},cardS,{gridColumn:"1 / -1"})}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Digger Opex Components (Stacked)</div>
-              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,Diesel:r.res.digOpxDiesel||0,Maint:r.res.digOpxMaint||0,Parts:r.res.digOpxParts||0,GET:r.res.digOpxGET||0,Operator:r.res.digOpxOperator||0,Other:(r.res.digOpxOil||0)+(r.res.digOpxCable||0)+(r.res.digOpxTracks||0)+(r.res.digOpxTires||0)+(r.res.digOpxFMS||0)+(r.res.digOpxBattery||0)+(r.res.digOpxMaterials||0)}})} margin={{top:10,right:20,left:10,bottom:40}}>
+              <ResponsiveContainer width="100%" height={300}><BarChart data={pData.map(function(r){return{period:r.periodLabel,Diesel:r.Diesel||0,Maint:r.Maint||0,Parts:r.Parts||0,GET:r.GET||0,Operator:r.Operator||0,Other:r.Other||0}})} margin={{top:10,right:20,left:10,bottom:40}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={P.bd}/><XAxis dataKey="period" fontSize={10} angle={-20} textAnchor="end"/><YAxis fontSize={10} tickFormatter={function(v){return "$"+(v/1e6).toFixed(1)+"M"}}/><Tooltip formatter={function(v){return fmtCur(v)}}/>
                 <Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="Diesel" stackId="a" fill="#3b82f6" name="Diesel/Elec"/><Bar dataKey="Maint" stackId="a" fill="#10b981" name="Maint Labour"/><Bar dataKey="Parts" stackId="a" fill="#f59e0b" name="Parts PM05"/><Bar dataKey="GET" stackId="a" fill="#ef4444" name="GET"/><Bar dataKey="Operator" stackId="a" fill="#8b5cf6" name="Operator"/><Bar dataKey="Other" stackId="a" fill="#6b7280" name="Other"/>
               </BarChart></ResponsiveContainer>

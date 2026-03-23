@@ -154,77 +154,171 @@ const defaultFormulas = () => [
 ];
 
 // ─── CALC ENGINE ───────────────────────────────────────────────────────
-function calcWithFormulas(inp,formulas){
+function buildCalcContext(inp){
   const{totalMined,oreMined,totalRampMined,avgLoadedTravelTime,avgUnloadedTravelTime,avgNetPower,avgTkphDelay,schedPeriod,calendarDays,calendarHours,truck:T,digger:D,other:O,fleet:F}=inp;
-  if(!totalMined||totalMined<=0)return null;
   const pm=schedPeriod==="Quarterly"?0.25:schedPeriod==="Monthly"?1/12:1;
   const ctx={totalMined,oreMined,totalRampMined,avgLoadedTravelTime,avgUnloadedTravelTime,avgNetPower,avgTkphDelay,calendarDays,calendarHours,periodMultiplier:pm};
-  for(const[k,v]of Object.entries(T))if(typeof v==="number")ctx["T_"+k]=v;
-  for(const[k,v]of Object.entries(D))if(typeof v==="number")ctx["D_"+k]=v;
-  for(const[k,v]of Object.entries(O))if(typeof v==="number")ctx["O_"+k]=v;
+  for(const[k,v]of Object.entries(T||{}))if(typeof v==="number")ctx["T_"+k]=v;
+  for(const[k,v]of Object.entries(D||{}))if(typeof v==="number")ctx["D_"+k]=v;
+  for(const[k,v]of Object.entries(O||{}))if(typeof v==="number")ctx["O_"+k]=v;
   if(F)for(const[k,v]of Object.entries(F))if(typeof v==="number")ctx["F_"+k]=v;
+  return ctx;
+}
+function renderFormulaCalculation(expr,ctx,result){
+  if(!expr)return "";
+  const fnNames={IF:1,if:1,ceil:1,floor:1,max:1,min:1,abs:1,round:1,CEIL:1,FLOOR:1,MAX:1,MIN:1,ABS:1,ROUND:1,ROUNDUP:1,ROUNDDOWN:1};
+  const out=tokenize(expr).map(function(t){
+    if(t.type==="id"&&!fnNames[t.val]&&Object.prototype.hasOwnProperty.call(ctx,t.val)){
+      const v=ctx[t.val];
+      return typeof v==="number"?String(Number(v.toFixed(6))):String(v);
+    }
+    return t.val;
+  }).join(" ").replace(/\s+([,()])/g,'$1').replace(/\(\s+/g,'(').replace(/\s+\)/g,')');
+  if(result===""||result==null||Number.isNaN(result))return out;
+  return out+" = "+(typeof result==="number"?String(Number(result.toFixed(6))):String(result));
+}
+function calcWithFormulasDetailed(inp,formulas){
+  const{totalMined}=inp;
+  if(!totalMined||totalMined<=0)return null;
+  const ctx=buildCalcContext(inp);
   const results={};
-  for(const f of formulas){const val=evalExpr(f.formula,ctx);results[f.key]=val;ctx[f.key]=typeof val==="number"?val:0}
-  return results;
+  const calculations={};
+  for(const f of formulas){
+    const val=evalExpr(f.formula,ctx);
+    calculations[f.key]=renderFormulaCalculation(f.formula,ctx,val);
+    results[f.key]=val;
+    ctx[f.key]=typeof val==="number"?val:0;
+  }
+  return {results,calculations,context:ctx};
+}
+function calcWithFormulas(inp,formulas){
+  const detail=calcWithFormulasDetailed(inp,formulas);
+  return detail?detail.results:null;
 }
 
 
-function applyAssetLifecycle(baseRows, trucks){
+function applyAssetLifecycle(baseRows, trucks, diggers){
   const chargerStates = {};
   const truckStates = {};
+  const diggerStates = {};
   const batteryStates = {};
   let nextChargerId = 1;
   let nextTruckId = 1;
+  let nextDiggerId = 1;
   let nextBatteryId = 1;
 
-  function getKey(row){
-    return `${row.setIdx}||${row.fleet?.id || row.fleetName || "fleet"}`;
+  function getPoolKey(row){
+    return `${row.fleet?.id || row.fleetName || "fleet"}`;
+  }
+  function allocShares(rows, getter){
+    const vals=rows.map(function(r){ return Math.max(0, Number(getter(r) || 0)); });
+    const sum=vals.reduce(function(a,b){ return a+b; },0);
+    if(sum<=0){
+      const even=rows.length?1/rows.length:0;
+      return rows.map(function(){ return even; });
+    }
+    return vals.map(function(v){ return v/sum; });
   }
 
-  return baseRows.map(function(row){
-    const res = row.res || {};
-    const truck = row.fleet ? (trucks[row.fleet.truckIdx] || {}) : {};
-    const key = getKey(row);
-    if(!chargerStates[key]) chargerStates[key] = [];
-    if(!truckStates[key]) truckStates[key] = [];
-    if(!batteryStates[key]) batteryStates[key] = [];
+  const grouped = {};
+  baseRows.forEach(function(row){
+    const key = `${row.pi}||${getPoolKey(row)}`;
+    if(!grouped[key]) grouped[key] = [];
+    grouped[key].push(row);
+  });
+  const out = [];
+  Object.keys(grouped).sort(function(a,b){
+    const ap=parseInt(a.split('||')[0],10), bp=parseInt(b.split('||')[0],10);
+    if(ap!==bp) return ap-bp;
+    return a.localeCompare(b);
+  }).forEach(function(gk){
+    const rows = grouped[gk];
+    const base = rows[0] || {};
+    const truck = base.fleet ? (trucks[base.fleet.truckIdx] || {}) : {};
+    const digger = base.fleet ? (diggers[base.fleet.diggerIdx] || {}) : {};
+    const poolKey = getPoolKey(base);
+    if(!chargerStates[poolKey]) chargerStates[poolKey] = [];
+    if(!truckStates[poolKey]) truckStates[poolKey] = [];
+    if(!diggerStates[poolKey]) diggerStates[poolKey] = [];
+    if(!batteryStates[poolKey]) batteryStates[poolKey] = {};
 
-    const chargers = chargerStates[key];
-    const truckAssets = truckStates[key];
-    const batteries = batteryStates[key];
+    const chargers = chargerStates[poolKey];
+    const truckAssets = truckStates[poolKey];
+    const diggerAssets = diggerStates[poolKey];
+    const batteriesByTruck = batteryStates[poolKey];
 
-    const requiredTrucks = Math.max(0, Math.ceil(res.trkReqR || 0));
-    const requiredChargers = Math.max(0, Math.ceil(res.chgStaRnd || 0));
+    const totalTruckReq = rows.reduce(function(s,r){ return s + Math.max(0, Number(r.res?.trkReq || r.res?.trkReqR || 0)); },0);
+    const totalDigQty = rows.reduce(function(s,r){ return s + Math.max(0, Number(r.res?.digQty || r.res?.digFleet || 0)); },0);
+    const digRound = Number(base.res?.O_diggerFleetRoundingThreshold || 0);
+    const requiredTrucks = Math.max(0, Math.ceil(totalTruckReq));
+    const requiredDiggers = totalDigQty<=0 ? 0 : ((totalDigQty - Math.floor(totalDigQty)) > digRound ? Math.ceil(totalDigQty) : Math.max(1, Math.floor(totalDigQty)));
+    const totalChargerReq = rows.reduce(function(s,r){ return s + Math.max(0, Number(r.res?.chgStaDec || r.res?.chgStaRnd || 0)); },0);
+    const requiredChargers = Math.max(0, Math.ceil(totalChargerReq));
+    const totalTruckSmu = rows.reduce(function(s,r){ return s + Math.max(0, Number(r.res?.totTrkSmu || 0)); },0);
+    const totalDiggerSmu = rows.reduce(function(s,r){ return s + Math.max(0, Number(r.res?.smuHrs || 0)); },0);
+    const totalChargingHours = rows.reduce(function(s,r){ return s + Math.max(0, Number(r.res?.chgHrsReq || 0)); },0);
+    const totalBatteryCycles = rows.reduce(function(s,r){
+      const perTruck = Math.max(0, Number(r.res?.eqLifeCycPer || 0));
+      const req = Math.max(0, Number(r.res?.trkReq || r.res?.trkReqR || 0));
+      return s + (perTruck * req);
+    },0);
+
     const truckUnitCapex = Number(truck.totalTruckCapex || 0);
+    const diggerUnitCapex = Number(digger.totalCapex || 0);
     const chargerUnitCapex = Number(truck.totalChargerCapex || 0);
+    const truckLifeHours = Math.max(1, Number(truck.economicLife || 80000));
+    const diggerLifeHours = Math.max(1, Number(digger.equipmentLife || 80000));
     const chargerLifeHours = Math.max(1, Number(truck.chargerLifeHours || truck.chargerOperatingTime || 60000));
     const batteryCycleLife = Math.max(1, Number(truck.equivalentFullLifeCycles || 3000));
     const batteryReplacementCost = Number(truck.batteryReplacementCost || truck.powerSystemCost || 0);
-    const cyclesPerTruck = Math.max(0, Number(res.eqLifeCycPer || 0));
-    const totalChargingHours = Math.max(0, Number(res.chgHrsReq || 0));
 
-    let truckCapex = 0;
-    let chargerCapex = 0;
-    let batteryCapex = 0;
-    let truckPurchases = 0;
-    let chargerPurchases = 0;
-    let chargerReplacements = 0;
-    let batteryReplacements = 0;
+    let truckCapex = 0, digCapex = 0, chargerCapex = 0, batteryCapex = 0;
+    let truckPurchases = 0, truckReplacements = 0, diggerPurchases = 0, diggerReplacements = 0, chargerPurchases = 0, chargerReplacements = 0, batteryReplacements = 0;
 
     while(truckAssets.length < requiredTrucks){
       const truckId = `TRK-${nextTruckId++}`;
-      truckAssets.push({id: truckId});
+      truckAssets.push({id: truckId, hours: 0});
       truckCapex += truckUnitCapex;
       truckPurchases += 1;
-      batteries.push({id: `BAT-${nextBatteryId++}`, truckId: truckId, cycles: 0});
+      batteriesByTruck[truckId] = {id: `BAT-${nextBatteryId++}`, truckId: truckId, cycles: 0};
     }
-
+    while(diggerAssets.length < requiredDiggers){
+      diggerAssets.push({id: `DIG-${nextDiggerId++}`, hours: 0});
+      digCapex += diggerUnitCapex;
+      diggerPurchases += 1;
+    }
     while(chargers.length < requiredChargers){
       chargers.push({id: `CHG-${nextChargerId++}`, hours: 0});
       chargerCapex += chargerUnitCapex;
       chargerPurchases += 1;
     }
 
+    if(truckAssets.length > 0 && totalTruckSmu > 0){
+      const perTruck = totalTruckSmu / truckAssets.length;
+      for(let i=0;i<truckAssets.length;i++){
+        const tr = truckAssets[i];
+        tr.hours += perTruck;
+        while(tr.hours >= truckLifeHours){
+          tr.hours -= truckLifeHours;
+          truckCapex += truckUnitCapex;
+          truckReplacements += 1;
+          const truckId = tr.id;
+          batteriesByTruck[truckId] = {id: `BAT-${nextBatteryId++}`, truckId: truckId, cycles: 0};
+        }
+      }
+    }
+    if(diggerAssets.length > 0 && totalDiggerSmu > 0){
+      const perDig = totalDiggerSmu / diggerAssets.length;
+      for(let i=0;i<diggerAssets.length;i++){
+        const dg = diggerAssets[i];
+        dg.hours += perDig;
+        while(dg.hours >= diggerLifeHours){
+          dg.hours -= diggerLifeHours;
+          digCapex += diggerUnitCapex;
+          diggerReplacements += 1;
+        }
+      }
+    }
     if(chargers.length > 0 && totalChargingHours > 0){
       const hoursPerCharger = totalChargingHours / chargers.length;
       chargers.forEach(function(ch){
@@ -236,57 +330,89 @@ function applyAssetLifecycle(baseRows, trucks){
         }
       });
     }
-
-    if(batteries.length > 0 && cyclesPerTruck > 0){
-      batteries.forEach(function(b){
-        b.cycles += cyclesPerTruck;
-        while(b.cycles >= batteryCycleLife){
-          b.cycles -= batteryCycleLife;
+    const activeTruckIds = truckAssets.map(function(t){ return t.id; }).filter(function(id){ return !!batteriesByTruck[id]; });
+    if(activeTruckIds.length > 0 && totalBatteryCycles > 0){
+      const cyclesPerTruck = totalBatteryCycles / activeTruckIds.length;
+      activeTruckIds.forEach(function(truckId){
+        const bat = batteriesByTruck[truckId];
+        bat.cycles += cyclesPerTruck;
+        while(bat.cycles >= batteryCycleLife){
+          bat.cycles -= batteryCycleLife;
           batteryCapex += batteryReplacementCost;
           batteryReplacements += 1;
+          bat.id = `BAT-${nextBatteryId++}`;
         }
       });
     }
 
-    const oldBatteryReplacement = Number(res.totReplBatCost || 0);
-    const mined = Number(row.pd?.totalMined || 0) * Number(row.unitMul || 1);
-    const adjTotTrkExc = Math.max(0, Number(res.totTrkExc || 0) - oldBatteryReplacement);
-    const adjTotExc = Math.max(0, Number(res.totExc || 0) - oldBatteryReplacement);
-    const adjTotCost = Math.max(0, Number(res.totCost || 0) - oldBatteryReplacement + batteryCapex);
-
-    const adjRes = {
-      ...res,
-      trkCapex: truckCapex,
-      chgCapex: chargerCapex,
-      totReplBatCost: batteryCapex,
-      totTrkExc: adjTotTrkExc,
-      trkPerTExc: mined > 0 ? adjTotTrkExc / mined : 0,
-      totExc: adjTotExc,
-      totPerTExc: mined > 0 ? adjTotExc / mined : 0,
-      totCost: adjTotCost,
-      totPerT: mined > 0 ? adjTotCost / mined : 0,
-      assetTruckPurchases: truckPurchases,
-      assetTruckInstalled: truckAssets.length,
-      assetChargerPurchases: chargerPurchases,
-      assetChargerReplacements: chargerReplacements,
-      assetChargersInstalled: chargers.length,
-      assetBatteryReplacements: batteryReplacements,
-      assetBatteriesInstalled: batteries.length
-    };
-
-    return {
-      ...row,
-      res: adjRes,
-      assetSummary: {
-        truckPurchases,
-        chargerPurchases,
-        chargerReplacements,
-        batteryReplacements,
-        trucksInstalled: truckAssets.length,
-        chargersInstalled: chargers.length,
-        batteriesInstalled: batteries.length
-      }
-    };
+    const shares = allocShares(rows, function(r){ return (r.pd?.totalMined || 0) * Number(r.unitMul || 1); });
+    rows.forEach(function(row, idx){
+      const res = row.res || {};
+      const share = shares[idx] || 0;
+      const mined = Number(row.pd?.totalMined || 0) * Number(row.unitMul || 1);
+      const oldBatteryReplacement = Number(res.totReplBatCost || 0);
+      const truckOpexExcCapex = Math.max(0, Number(res.totTrkExc || 0) - oldBatteryReplacement);
+      const diggerOpexExcCapex = Math.max(0, Number(res.digOpxTotal || 0));
+      const rehandle = Math.max(0, Number(res.digRehandle || 0));
+      const rowTruckCapex = truckCapex * share;
+      const rowDigCapex = digCapex * share;
+      const rowChgCapex = chargerCapex * share;
+      const rowBatCapex = batteryCapex * share;
+      const rowTotTrk = truckOpexExcCapex + rowTruckCapex + rowChgCapex + rowBatCapex;
+      const rowDigCost = diggerOpexExcCapex + rowDigCapex;
+      const rowTotExc = truckOpexExcCapex + diggerOpexExcCapex + rehandle;
+      const rowTotCost = rowTotTrk + rowDigCost + rehandle;
+      const adjRes = {
+        ...res,
+        trkCapex: rowTruckCapex,
+        digCapex: rowDigCapex,
+        chgCapex: rowChgCapex,
+        totReplBatCost: rowBatCapex,
+        totTrkExc: truckOpexExcCapex,
+        trkPerTExc: mined > 0 ? truckOpexExcCapex / mined : 0,
+        totTrk: rowTotTrk,
+        trkPerT: mined > 0 ? rowTotTrk / mined : 0,
+        digCostActivity: rowDigCost,
+        digOpxIncCpx: mined > 0 ? rowDigCost / mined : 0,
+        totExc: rowTotExc,
+        totPerTExc: mined > 0 ? rowTotExc / mined : 0,
+        totCost: rowTotCost,
+        totPerT: mined > 0 ? rowTotCost / mined : 0,
+        assetTruckPurchases: truckPurchases * share,
+        assetTruckReplacements: truckReplacements * share,
+        assetTruckInstalled: truckAssets.length,
+        assetDiggerPurchases: diggerPurchases * share,
+        assetDiggerReplacements: diggerReplacements * share,
+        assetDiggersInstalled: diggerAssets.length,
+        assetChargerPurchases: chargerPurchases * share,
+        assetChargerReplacements: chargerReplacements * share,
+        assetChargersInstalled: chargers.length,
+        assetBatteryReplacements: batteryReplacements * share,
+        assetBatteriesInstalled: activeTruckIds.length
+      };
+      out.push({
+        ...row,
+        res: adjRes,
+        assetSummary: {
+          truckPurchases: truckPurchases * share,
+          truckReplacements: truckReplacements * share,
+          diggerPurchases: diggerPurchases * share,
+          diggerReplacements: diggerReplacements * share,
+          chargerPurchases: chargerPurchases * share,
+          chargerReplacements: chargerReplacements * share,
+          batteryReplacements: batteryReplacements * share,
+          trucksInstalled: truckAssets.length,
+          diggersInstalled: diggerAssets.length,
+          chargersInstalled: chargers.length,
+          batteriesInstalled: activeTruckIds.length
+        }
+      });
+    });
+  });
+  return out.sort(function(a,b){
+    if((a.pi||0)!==(b.pi||0)) return (a.pi||0)-(b.pi||0);
+    if((a.setIdx||0)!==(b.setIdx||0)) return (a.setIdx||0)-(b.setIdx||0);
+    return String(a.fleetName||'').localeCompare(String(b.fleetName||''));
   });
 }
 
@@ -451,6 +577,7 @@ export default function App(){
   const togSec=(s)=>setCollSec(p=>{const n=Object.assign({},p);n[s]=!n[s];return n});
   const togGrp=(g)=>setCollGrp(p=>{const n=Object.assign({},p);n[g]=!n[g];return n});
   const [testPeriodIdx,setTestPeriodIdx]=useState(0);
+  const [testSetIdx,setTestSetIdx]=useState(0);
   const [testFleetIdx,setTestFleetIdx]=useState(0);
   const [hiddenSeries,setHiddenSeries]=useState({});
   const togSeries=(k)=>setHiddenSeries(function(p){var n=Object.assign({},p);n[k]=!n[k];return n});
@@ -537,7 +664,7 @@ export default function App(){
         all.push({pi,setIdx:row.setIdx,setName:(row.mapping&& (row.mapping.name||row.mapping.desc)) || `Set ${row.setIdx+1}`,periodLabel:pd.periodLabel||`P${pi+1}`,fleet,fleetName:fleet.name,truckName:trucks[ti]?.truckName,diggerName:diggers[di]?.diggerName,equipKey:`${fleet.truckIdx}-${fleet.diggerIdx}`,res,pd,unitMul:scn.unitMul});
       }
     }
-    return applyAssetLifecycle(all, trucks);
+    return applyAssetLifecycle(all, trucks, diggers);
   },[numPeriods,activeAssignments,trucks,diggers,otherA,formulas,scn,getPdForSet]);
 
   const equipGroups=useMemo(()=>{
@@ -555,13 +682,23 @@ export default function App(){
 
   const totals=useMemo(()=>{const t={m:0,c:0};results.forEach(r=>{if(!r.res)return;t.m+=(r.pd?.totalMined||0)*scn.unitMul;t.c+=r.res.totCost||0});t.cpt=t.m>0?t.c/t.m:0;return t},[results,scn.unitMul]);
 
-  const testResult=useMemo(()=>{
-    const fleet=activeFleets[testFleetIdx]||activeFleets[0];if(!fleet)return null;
-    const testSetIdx=(scn.fleetPhysicalSets&&scn.fleetPhysicalSets[fleet.id])||0;
-    const pd=getPdForSet(testPeriodIdx,testSetIdx);if(!pd)return null;
+  useEffect(function(){
+    if(testSetIdx >= (scn.fieldMappings||[]).length) setTestSetIdx(0);
+  },[scn.fieldMappings,testSetIdx]);
+  const testAssignments=useMemo(function(){
+    return getScenarioAssignments(scn).filter(function(a){ return a.setIdx===testSetIdx; });
+  },[scn,testSetIdx,fleets]);
+  useEffect(function(){
+    if(testFleetIdx >= testAssignments.length) setTestFleetIdx(0);
+  },[testAssignments,testFleetIdx]);
+  const testResultDetail=useMemo(()=>{
+    const assignment=testAssignments[testFleetIdx] || testAssignments[0] || activeAssignments.find(function(a){ return a.setIdx===testSetIdx; }) || activeAssignments[0];
+    const fleet=assignment?.fleet; if(!fleet) return null;
+    const pd=getPdForSet(testPeriodIdx,assignment.setIdx);if(!pd)return null;
     const ti=Math.min(fleet.truckIdx,trucks.length-1),di=Math.min(fleet.diggerIdx,diggers.length-1);
-    return calcWithFormulas({totalMined:(pd.totalMined||0)*scn.unitMul,oreMined:(pd.oreMined||0)*scn.unitMul,totalRampMined:(pd.totalRampMined||pd.totalMined||0)*scn.unitMul,avgLoadedTravelTime:pd.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd.avgUnloadedTravelTime||0,avgNetPower:pd.avgNetPower||0,avgTkphDelay:pd.avgTkphDelay||0,schedPeriod:scn.schedPeriod,calendarDays:pd.days||91,calendarHours:pd.hours||2184,truck:trucks[ti],digger:diggers[di],other:otherA,fleet:fleet},formulas);
-  },[testPeriodIdx,testFleetIdx,activeFleets,trucks,diggers,otherA,formulas,scn,getPdForSet]);
+    return calcWithFormulasDetailed({totalMined:(pd.totalMined||0)*scn.unitMul,oreMined:(pd.oreMined||0)*scn.unitMul,totalRampMined:(pd.totalRampMined||pd.totalMined||0)*scn.unitMul,avgLoadedTravelTime:pd.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd.avgUnloadedTravelTime||0,avgNetPower:pd.avgNetPower||0,avgTkphDelay:pd.avgTkphDelay||0,schedPeriod:scn.schedPeriod,calendarDays:pd.days||91,calendarHours:pd.hours||2184,truck:trucks[ti],digger:diggers[di],other:otherA,fleet:fleet},formulas);
+  },[testPeriodIdx,testFleetIdx,testAssignments,activeAssignments,testSetIdx,trucks,diggers,otherA,formulas,scn,getPdForSet]);
+  const testResult=testResultDetail?testResultDetail.results:null;
 
   const updT=(i,f,v)=>setTrucks(p=>{const n=[...p];n[i]={...n[i],[f]:v};return n});
   const updD=(i,f,v)=>setDiggers(p=>{const n=[...p];n[i]={...n[i],[f]:v};return n});
@@ -981,26 +1118,28 @@ export default function App(){
           </div>
           <div style={{...cardS,padding:"10px 14px",marginBottom:10,display:"flex",gap:14,alignItems:"center",flexWrap:"wrap",background:P.gnBg,borderColor:`${P.gn}33`}}>
             <span style={{color:P.gn,fontWeight:700,fontSize:12}}>🧪 Test:</span>
-            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Period:</span><select value={testPeriodIdx} onChange={e=>setTestPeriodIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{Array.from({length:numPeriods},(_,i)=><option key={i} value={i}>P{i+1}</option>)}</select></div>
-            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Fleet:</span><select value={testFleetIdx} onChange={e=>setTestFleetIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{activeFleets.map((f,i)=><option key={i} value={i}>{f.name}</option>)}</select></div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Physical Set:</span><select value={testSetIdx} onChange={e=>setTestSetIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{(scn.fieldMappings||[]).map((m,i)=><option key={m.id||i} value={i}>{m.name||m.desc||`Set ${i+1}`}</option>)}</select></div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Period:</span><select value={testPeriodIdx} onChange={e=>setTestPeriodIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{Array.from({length:numPeriods},(_,i)=><option key={i} value={i}>{getPdForSet(i,testSetIdx)?.periodLabel || `P${i+1}`}</option>)}</select></div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{color:P.txM,fontSize:11,fontWeight:600}}>Fleet:</span><select value={testFleetIdx} onChange={e=>setTestFleetIdx(parseInt(e.target.value))} style={{...selS,fontSize:11}}>{(testAssignments.length?testAssignments:activeAssignments).map((a,i)=><option key={a.fleet?.id||i} value={i}>{a.fleet?.name || `Fleet ${i+1}`}</option>)}</select></div>
           </div>
           <div style={{...cardS,overflowX:"auto"}}><table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
             <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}>
-              {[["#",28],["Key",105],["Label",180],["Unit",40],["Formula",null],["🧪",110],["",50]].map(([h,w],i)=>(<th key={i} style={{...thS,width:w||"auto",textAlign:i===5?"right":"left",color:i===5?P.gn:P.txM}}>{h}</th>))}
+              {[["#",28],["Key",105],["Label",180],["Unit",40],["Formula",null],["Calculation",320],["🧪",110],["",50]].map(([h,w],i)=>(<th key={i} style={{...thS,width:w||"auto",textAlign:i===6?"right":"left",color:i===6?P.gn:P.txM}}>{h}</th>))}
             </tr></thead>
             <tbody>{(()=>{let lS=null,lG=null,rn=0,curSec=null,curGrp=null;return formulas.filter(f=>{if(!formulaSearch)return true;const s=formulaSearch.toLowerCase();return[f.key,f.label,f.formula,f.section||"",f.group||""].some(x=>x.toLowerCase().includes(s))}).flatMap((f,i)=>{
               const rows=[];
-              if(f.section&&f.section!==lS){lS=f.section;curSec=f.section;lG=null;curGrp=null;rows.push(<tr key={`s${i}`} onClick={()=>togSec(f.section)} style={{cursor:"pointer"}}><td colSpan={7} style={{padding:"14px 10px 6px",color:P.pri,fontWeight:700,fontSize:13,borderBottom:`2px solid ${P.pri}`,background:P.secBg,userSelect:"none"}}>{collSec[f.section]?"▶":"▼"} {f.section}</td></tr>)}
+              if(f.section&&f.section!==lS){lS=f.section;curSec=f.section;lG=null;curGrp=null;rows.push(<tr key={`s${i}`} onClick={()=>togSec(f.section)} style={{cursor:"pointer"}}><td colSpan={8} style={{padding:"14px 10px 6px",color:P.pri,fontWeight:700,fontSize:13,borderBottom:`2px solid ${P.pri}`,background:P.secBg,userSelect:"none"}}>{collSec[f.section]?"▶":"▼"} {f.section}</td></tr>)}
               if(collSec[curSec])return rows;
-              if(f.group&&f.group!==lG){lG=f.group;curGrp=f.group;rows.push(<tr key={`g${i}`} onClick={()=>togGrp(f.group)} style={{cursor:"pointer"}}><td colSpan={7} style={{padding:"7px 10px 3px 22px",color:P.txD,fontWeight:600,fontSize:11,borderBottom:`1px solid ${P.bd}`,background:"#f8fafc",userSelect:"none"}}>{collGrp[f.group]?"▶":"▸"} {f.group}</td></tr>)}
+              if(f.group&&f.group!==lG){lG=f.group;curGrp=f.group;rows.push(<tr key={`g${i}`} onClick={()=>togGrp(f.group)} style={{cursor:"pointer"}}><td colSpan={8} style={{padding:"7px 10px 3px 22px",color:P.txD,fontWeight:600,fontSize:11,borderBottom:`1px solid ${P.bd}`,background:"#f8fafc",userSelect:"none"}}>{collGrp[f.group]?"▶":"▸"} {f.group}</td></tr>)}
               if(collGrp[curGrp])return rows;
-              rn++;const isE=editingFormula===f.key;const tv=testResult?testResult[f.key]:"";const td=f.cur?fmtC2(tv):fmt(tv,f.dec||2);
+              rn++;const isE=editingFormula===f.key;const tv=testResult?testResult[f.key]:"";const td=f.cur?fmtC2(tv):fmt(tv,f.dec||2);const calcTxt=testResultDetail?.calculations?.[f.key] || "";
               rows.push(<tr key={f.key} style={{borderBottom:`1px solid ${P.bd}`,background:isE?P.blBg:f.hl?P.hlBg:"transparent"}}>
                 <td style={{padding:"4px 8px",color:P.txD,fontSize:10,fontFamily:mf}}>{rn}</td>
                 <td style={{padding:"4px 8px"}}><code style={{color:P.pri,fontSize:10,fontFamily:mf,fontWeight:600}}>{f.key}</code></td>
                 <td style={{padding:"4px 8px",color:f.hl?P.hlTx:P.txM,fontWeight:f.hl?600:400,fontSize:12}}>{f.label}</td>
                 <td style={{padding:"4px 6px",color:P.txD,fontSize:10}}>{f.unit}</td>
                 <td style={{padding:"4px 8px"}}>{isE?(<div style={{display:"flex",gap:5}}><input type="text" value={editText} onChange={e=>setEditText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){setFormulas(p=>p.map(ff=>ff.key===f.key?{...ff,formula:editText}:ff));setEditingFormula(null)}if(e.key==="Escape")setEditingFormula(null)}} style={{flex:1,padding:"4px 8px",background:P.input,border:`1.5px solid ${P.bl}`,borderRadius:6,color:P.tx,fontFamily:mf,fontSize:11}} autoFocus/><Btn onClick={()=>{setFormulas(p=>p.map(ff=>ff.key===f.key?{...ff,formula:editText}:ff));setEditingFormula(null)}} color={P.gn} small solid>✓</Btn></div>):(<code onClick={()=>{setEditingFormula(f.key);setEditText(f.formula)}} style={{color:"#475569",fontSize:10,fontFamily:mf,cursor:"pointer",display:"block",padding:"3px 8px",borderRadius:5,background:P.input}}>{f.formula}</code>)}</td>
+                <td style={{padding:"4px 8px",color:P.tx,fontSize:10,fontFamily:mf,maxWidth:360,whiteSpace:"normal",wordBreak:"break-word"}}>{calcTxt || "—"}</td>
                 <td style={{padding:"4px 8px",textAlign:"right",fontWeight:f.hl?700:500,color:tv===""?P.txD:f.hl?P.gn:P.tx,fontSize:11,fontFamily:mf,background:P.gnBg+"55"}}>{td}</td>
                 <td style={{padding:"4px 6px",textAlign:"center"}}>{!isE&&<button onClick={()=>{setEditingFormula(f.key);setEditText(f.formula)}} style={{background:P.blBg,border:`1px solid ${P.bl}22`,borderRadius:4,color:P.bl,cursor:"pointer",fontSize:10,padding:"2px 6px"}}>✏️</button>}</td>
               </tr>);return rows})})()}</tbody>

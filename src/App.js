@@ -648,6 +648,70 @@ export default function App(){
     }).filter(function(row){return !!row.fleetId && !!row.fleet;});
   };
 
+  const getPdForScenarioSet=useCallback(function(s,pi,setIdx){
+    if(s.csvData){
+      const mapping=(s.fieldMappings&&s.fieldMappings[setIdx])||s.fieldMappings[0]||{name:"Base Set",desc:"Base Set",fields:{}};
+      const desc=(mapping.desc||mapping.name||"Base Set");
+      const r={period:pi+1,periodLabel:s.csvData.gs(desc,"Period",pi)||s.csvData.gs("all","Period",pi)||`P${pi+1}`};
+      r.days=s.csvData.gv(desc,"Days",pi)||s.csvData.gv("all","Days",pi)||91;
+      r.hours=s.csvData.gv(desc,"Hours",pi)||s.csvData.gv("all","Hours",pi)||r.days*24;
+      for(let pfi=0;pfi<PHYS_FIELDS.length;pfi++){
+        const pf=PHYS_FIELDS[pfi];
+        r[pf.key]=mapping.fields&&mapping.fields[pf.key]?s.csvData.gv(desc,mapping.fields[pf.key],pi):0;
+      }
+      return r;
+    }
+    const md=(s.manualData&&s.manualData[pi])||null;
+    if(!md)return null;
+    return {...md,periodLabel:md.periodLabel||`P${pi+1}`};
+  },[]);
+
+  const getScenarioSummary=useCallback(function(s){
+    var assignments=getScenarioAssignments(s);
+    var np2=s.csvData?s.csvData.np:(s.manualData?s.manualData.length:0);
+    var base=[];
+    for(var pi=0;pi<np2;pi++){
+      for(var ai=0;ai<assignments.length;ai++){
+        var row=assignments[ai];
+        var fleet=row.fleet;
+        var pd2=getPdForScenarioSet(s,pi,row.setIdx);
+        if(!pd2||!fleet)continue;
+        var ti2=Math.min(fleet.truckIdx,trucks.length-1),di2=Math.min(fleet.diggerIdx,diggers.length-1);
+        var res2=calcWithFormulas({totalMined:(pd2.totalMined||0)*s.unitMul,oreMined:(pd2.oreMined||0)*s.unitMul,totalRampMined:(pd2.totalRampMined||pd2.totalMined||0)*s.unitMul,avgLoadedTravelTime:pd2.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd2.avgUnloadedTravelTime||0,avgNetPower:pd2.avgNetPower||0,avgTkphDelay:pd2.avgTkphDelay||0,schedPeriod:s.schedPeriod,calendarDays:pd2.days||91,calendarHours:pd2.hours||2184,truck:trucks[ti2],digger:diggers[di2],other:otherA,fleet:fleet},formulas);
+        if(!res2)continue;
+        base.push({pi:pi,setIdx:row.setIdx,setName:(row.mapping&&(row.mapping.name||row.mapping.desc))||`Set ${row.setIdx+1}`,periodLabel:pd2.periodLabel||`P${pi+1}`,fleet:fleet,fleetName:fleet.name,truckName:trucks[ti2]?.truckName,diggerName:diggers[di2]?.diggerName,equipKey:`${fleet.truckIdx}-${fleet.diggerIdx}`,res:res2,pd:pd2,unitMul:s.unitMul});
+      }
+    }
+    var out={name:s.name,mined:0,cost:0,costExc:0,trkCapex:0,digCapex:0,chgCapex:0,trucks:0,diggers:0,chargers:0};
+    var rows=applyAssetLifecycle(base,trucks,diggers);
+    var truckPer={},digPer={},chgPer={};
+    for(var i=0;i<rows.length;i++){
+      var rr=rows[i], res=rr.res||{}, mined=(rr.pd&&rr.pd.totalMined||0)*Number(rr.unitMul||1);
+      out.mined+=mined;
+      out.cost+=Number(res.totCost||0);
+      out.costExc+=Number(res.totExc||0);
+      out.trkCapex+=Number(res.trkCapex||0);
+      out.digCapex+=Number(res.digCapex||0);
+      out.chgCapex+=Number(res.chgCapex||0);
+      var pk=String(rr.pi||0);
+      var fk=(rr.fleet&&rr.fleet.id)||rr.fleetName||rr.equipKey||`fleet-${rr.setIdx}`;
+      var key=pk+"||"+fk;
+      truckPer[key]=Math.max(Number(truckPer[key]||0),Number(res.assetTruckInstalled||res.trkReqR||0));
+      digPer[key]=Math.max(Number(digPer[key]||0),Number(res.assetDiggersInstalled||res.digFleet||0));
+      chgPer[key]=Math.max(Number(chgPer[key]||0),Number(res.assetChargersInstalled||res.chgStaRnd||0));
+    }
+    var truckByPi={},digByPi={},chgByPi={};
+    Object.keys(truckPer).forEach(function(k){var pi=k.split('||')[0];truckByPi[pi]=(truckByPi[pi]||0)+truckPer[k];});
+    Object.keys(digPer).forEach(function(k){var pi=k.split('||')[0];digByPi[pi]=(digByPi[pi]||0)+digPer[k];});
+    Object.keys(chgPer).forEach(function(k){var pi=k.split('||')[0];chgByPi[pi]=(chgByPi[pi]||0)+chgPer[k];});
+    out.trucks=Math.max(0,...Object.values(truckByPi));
+    out.diggers=Math.max(0,...Object.values(digByPi));
+    out.chargers=Math.max(0,...Object.values(chgByPi));
+    out.cpt=out.mined>0?out.cost/out.mined:0;
+    out.cptExc=out.mined>0?out.costExc/out.mined:0;
+    return out;
+  },[getScenarioAssignments,getPdForScenarioSet,trucks,diggers,otherA,formulas]);
+
   const numPeriods=scn.csvData?scn.csvData.np:scn.manualData.length;
   const activeFleets=fleets.filter(f=>scn.activeFleetIds.length===0||scn.activeFleetIds.includes(f.id));
   const activeAssignments=useMemo(function(){ return getScenarioAssignments(scn); },[scn,fleets]);
@@ -1185,26 +1249,7 @@ export default function App(){
           <ST icon="⚖️">Scenario Comparison</ST>
           <p style={{color:P.txM,fontSize:13,marginBottom:16}}>Side-by-side comparison of key metrics across all scenarios.</p>
           {(()=>{
-            const scnTots=scenarios.map(function(s){
-              var assignments=getScenarioAssignments(s);
-              var np2=s.csvData?s.csvData.np:s.manualData.length;
-              var t={mined:0,cost:0,costExc:0,trkCapex:0,digCapex:0,chgCapex:0,trucks:0,diggers:0,chargers:0};
-              for(var pi=0;pi<np2;pi++){for(var fi2=0;fi2<assignments.length;fi2++){var row=assignments[fi2]; var fleet=row.fleet;
-                var mapping=row.mapping||s.fieldMappings[0];
-                var pd2=null;
-                if(s.csvData&&mapping){pd2={days:s.csvData.gv("Days",pi)||91};pd2.hours=s.csvData.gv("Hours",pi)||pd2.days*24;for(var pfi=0;pfi<PHYS_FIELDS.length;pfi++){var pf=PHYS_FIELDS[pfi];pd2[pf.key]=mapping.fields[pf.key]?s.csvData.gv(mapping.fields[pf.key],pi):0}}
-                else{pd2=s.manualData[pi]}
-                if(!pd2)continue;
-                var ti2=Math.min(fleet.truckIdx,trucks.length-1),di2=Math.min(fleet.diggerIdx,diggers.length-1);
-                var res2=calcWithFormulas({totalMined:(pd2.totalMined||0)*s.unitMul,oreMined:(pd2.oreMined||0)*s.unitMul,totalRampMined:(pd2.totalRampMined||pd2.totalMined||0)*s.unitMul,avgLoadedTravelTime:pd2.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd2.avgUnloadedTravelTime||0,avgNetPower:pd2.avgNetPower||0,avgTkphDelay:pd2.avgTkphDelay||0,schedPeriod:s.schedPeriod,calendarDays:pd2.days||91,calendarHours:pd2.hours||2184,truck:trucks[ti2],digger:diggers[di2],other:otherA,fleet:fleet},formulas);
-                if(!res2)continue;
-                t.mined+=(pd2.totalMined||0)*s.unitMul;t.cost+=res2.totCost||0;t.costExc+=res2.totExc||0;
-                t.trkCapex+=res2.trkCapex||0;t.digCapex+=res2.digCapex||0;t.chgCapex+=res2.chgCapex||0;
-                t.trucks=Math.max(t.trucks,res2.trkReqR||0);t.diggers=Math.max(t.diggers,res2.digFleet||0);t.chargers=Math.max(t.chargers,res2.chgStaRnd||0);
-              }}
-              t.cpt=t.mined>0?t.cost/t.mined:0;t.cptExc=t.mined>0?t.costExc/t.mined:0;
-              return t;
-            });
+            const scnTots=scenarios.map(function(s){ return getScenarioSummary(s); });
             var cmpRows=[
               {label:"Total Mined",key:"mined",unit:"t",fn:fmtInt},
               {label:"Total Cost (inc Cpx)",key:"cost",unit:"AUD",fn:fmtCur,hl:1},
@@ -1374,22 +1419,7 @@ export default function App(){
         {page==="charts_compare"&&(<div>
           <ST icon="📈">Scenario Comparison Charts</ST>
           {(function(){
-            var scnData=scenarios.map(function(s){
-              var assignments=getScenarioAssignments(s);
-              var np2=s.csvData?s.csvData.np:s.manualData.length;
-              var t={name:s.name,mined:0,cost:0,costExc:0,trkCapex:0,digCapex:0,chgCapex:0,trucks:0,diggers:0,chargers:0};
-              for(var pi=0;pi<np2;pi++){for(var fi2=0;fi2<assignments.length;fi2++){var row=assignments[fi2]; var fleet=row.fleet;
-                var mapping=row.mapping||s.fieldMappings[0];var pd2=null;
-                if(s.csvData&&mapping){pd2={days:s.csvData.gv("Days",pi)||91};pd2.hours=s.csvData.gv("Hours",pi)||pd2.days*24;for(var pfi=0;pfi<PHYS_FIELDS.length;pfi++){var pf=PHYS_FIELDS[pfi];pd2[pf.key]=mapping.fields[pf.key]?s.csvData.gv(mapping.fields[pf.key],pi):0}}
-                else{pd2=s.manualData[pi]}
-                if(!pd2)continue;var ti2=Math.min(fleet.truckIdx,trucks.length-1),di2=Math.min(fleet.diggerIdx,diggers.length-1);
-                var res2=calcWithFormulas({totalMined:(pd2.totalMined||0)*s.unitMul,oreMined:(pd2.oreMined||0)*s.unitMul,totalRampMined:(pd2.totalRampMined||pd2.totalMined||0)*s.unitMul,avgLoadedTravelTime:pd2.avgLoadedTravelTime||0,avgUnloadedTravelTime:pd2.avgUnloadedTravelTime||0,avgNetPower:pd2.avgNetPower||0,avgTkphDelay:pd2.avgTkphDelay||0,schedPeriod:s.schedPeriod,calendarDays:pd2.days||91,calendarHours:pd2.hours||2184,truck:trucks[ti2],digger:diggers[di2],other:otherA,fleet:fleet},formulas);
-                if(!res2)continue;t.mined+=(pd2.totalMined||0)*s.unitMul;t.cost+=res2.totCost||0;t.costExc+=res2.totExc||0;
-                t.trkCapex+=res2.trkCapex||0;t.digCapex+=res2.digCapex||0;t.chgCapex+=res2.chgCapex||0;
-                t.trucks=Math.max(t.trucks,res2.trkReqR||0);t.diggers=Math.max(t.diggers,res2.digFleet||0);t.chargers=Math.max(t.chargers,res2.chgStaRnd||0);
-              }}
-              t.cpt=t.mined>0?t.cost/t.mined:0;t.cptExc=t.mined>0?t.costExc/t.mined:0;return t;
-            });
+            var scnData=scenarios.map(function(s){ return getScenarioSummary(s); });
             return(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
               <div style={cardS}><div style={{padding:"16px 16px 4px",fontWeight:700,color:P.pri,fontSize:13}}>Total Cost by Scenario</div>
                 <ResponsiveContainer width="100%" height={300}><BarChart data={scnData} margin={{top:10,right:20,left:10,bottom:40}}>

@@ -878,8 +878,7 @@ export default function App(){
         {activeGroup.items.map(n=>(<button key={n.id} onClick={()=>setPage(n.id)} style={{padding:"11px 20px",background:"transparent",border:"none",borderBottom:page===n.id?"3px solid "+P.pri:"3px solid transparent",color:page===n.id?P.pri:P.txD,fontFamily:ff,fontSize:12,fontWeight:page===n.id?700:500,cursor:"pointer",whiteSpace:"nowrap"}}><span style={{marginRight:6}}>{n.icon}</span>{n.label}</button>))}
       </div>
 
-      <div style={{padding:"20px 32px 60px",width:"100%"}}>
-      // <div style={{padding:"20px 32px 60px",width:"100%",boxSizing:"border-box"}}>
+      <div style={{padding:"20px 32px 60px",maxWidth:1600,margin:"0 auto"}}>
 
         {/* ══ SCENARIO MANAGER ══ */}
         {page==="scenarios"&&(<div>
@@ -1231,7 +1230,6 @@ export default function App(){
 
         {/* ══ SETTINGS ══ */}
         {page==="other"&&(<div style={{maxWidth:880}}><ST icon="⚙️">General Assumptions</ST><div style={{...cardS,overflowX:"auto"}}>
-        //{page==="other"&&(<div style={{width:"100%"}}><ST icon="⚙️">General Assumptions</ST><div style={{...cardS,overflowX:"auto"}}>
           <table style={{borderCollapse:"collapse",fontFamily:ff,fontSize:12,width:"100%"}}>
             <thead><tr style={{background:P.secBg,borderBottom:`2px solid ${P.bdS}`}}><th style={{...thS,width:42}}>#</th><th style={{...thS,width:110}}>Key</th><th style={{...thS,minWidth:260}}>Label</th><th style={{...thS,width:70}}>Unit</th><th style={{...thS,width:170,textAlign:"right"}}>Value</th></tr></thead>
             <tbody>{[["moistureContent","Moisture Content","%",0.001],["exchangeRate","Exchange Rate (AUD:USD)","ratio",0.01],["discountRate","Discount Rate","%",0.005],["electricityCost","Electricity Cost","$/kWh",0.001],["dieselCost","Diesel Cost","$/L",0.01],["allInFitterPerYear","All-in Fitter Rate","$/hr"],["mannedOperator","Manned Operator","$/SMU"],["calendarTime","Calendar Time","hrs/yr"],["diggerFleetRoundingThreshold","Digger Rounding","frac",0.05]].map(([k,l,u,s],i)=>(
